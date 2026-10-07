@@ -1,0 +1,235 @@
+#!/bin/bash
+#SBATCH --job-name=CIB_Net_Real
+#SBATCH --output=cib_net_loso_%j.log
+#SBATCH --error=cib_net_loso_%j.err
+#SBATCH --partition=gpu
+#SBATCH --nodelist=node1
+#SBATCH --gres=shard:20
+
+cd $SLURM_SUBMIT_DIR
+
+# ==========================================
+# 1. HPC Environment Setup
+# ==========================================
+source $HOME/miniconda3/bin/activate
+
+# Prevent PyTorch from using all 256 CPUs on the node and triggering a Slurm SIGKILL!
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+echo "Starting CIB-Net Real Data Training on HPC..."
+echo "Allocated GPU: $CUDA_VISIBLE_DEVICES"
+
+# ==========================================
+# 2. Generate the Python Code
+# ==========================================
+cat << 'EOF' > cib_net_hpc_run.py
+import os
+import pickle
+import numpy as np
+from scipy.signal import butter, filtfilt
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+from sklearn.model_selection import LeaveOneGroupOut
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+
+# ==========================================
+# DATA LOADING & PREPROCESSING
+# ==========================================
+def butter_bandpass_filter(data, lowcut=4.0, highcut=45.0, fs=128, order=4):
+    nyq = 0.5 * fs
+    low, high = lowcut / nyq, highcut / nyq
+    b, a = butter(order, [low, high], btype='band')
+    return filtfilt(b, a, data, axis=-1)
+
+def preprocess_eeg(eeg_data, fs=128, baseline_sec=3):
+    filtered = butter_bandpass_filter(eeg_data, fs=fs)
+    baseline_samples = baseline_sec * fs
+    baseline = np.mean(filtered[:, :, :baseline_samples], axis=-1, keepdims=True)
+    corrected = filtered[:, :, baseline_samples:] - baseline
+    
+    mean = np.mean(corrected, axis=-1, keepdims=True)
+    std = np.std(corrected, axis=-1, keepdims=True)
+    return (corrected - mean) / (std + 1e-8)
+
+class DEAPDataset(Dataset):
+    def __init__(self, data_path, target='valence'):
+        self.x, self.y, self.subject_ids = [], [], []
+        
+        for subject_id in range(1, 33):
+            file_path = os.path.join(data_path, f's{subject_id:02d}.dat')
+            if not os.path.exists(file_path): continue
+                
+            with open(file_path, 'rb') as f:
+                content = pickle.load(f, encoding='latin1')
+                
+            data, labels = content['data'], content['labels']
+            eeg_data = data[:, :32, :] 
+            eeg_data = preprocess_eeg(eeg_data)
+            
+            target_idx = 0 if target == 'valence' else 1
+            binary_labels = (labels[:, target_idx] > 5).astype(np.int64)
+            
+            self.x.append(eeg_data)
+            self.y.append(binary_labels)
+            self.subject_ids.extend([subject_id] * 40)
+            
+        self.x = np.concatenate(self.x, axis=0)
+        self.y = np.concatenate(self.y, axis=0)
+        self.subject_ids = np.array(self.subject_ids)
+        
+    def __len__(self): return len(self.x)
+    def __getitem__(self, idx):
+        return torch.tensor(self.x[idx], dtype=torch.float32), \
+               torch.tensor(self.y[idx], dtype=torch.long), \
+               torch.tensor(self.subject_ids[idx], dtype=torch.long)
+
+def get_dataloaders(dataset, train_idx, test_idx, batch_size=16):
+    train_sampler = torch.utils.data.SubsetRandomSampler(train_idx)
+    test_sampler = torch.utils.data.SubsetRandomSampler(test_idx)
+    return DataLoader(dataset, batch_size=batch_size, sampler=train_sampler), \
+           DataLoader(dataset, batch_size=batch_size, sampler=test_sampler)
+
+# ==========================================
+# CIB-NET ARCHITECTURE
+# ==========================================
+class PerChannelCNNEncoder(nn.Module):
+    def __init__(self, d_embed=128, n_channels=32):
+        super().__init__()
+        self.d_embed, self.n_channels = d_embed, n_channels
+        self.encoder = nn.Sequential(
+            nn.Conv1d(1, 32, kernel_size=25, padding=12), nn.BatchNorm1d(32), nn.ELU(),
+            nn.Conv1d(32, 64, kernel_size=15, padding=7), nn.BatchNorm1d(64), nn.ELU(),
+            nn.AdaptiveAvgPool1d(64), 
+            nn.Conv1d(64, d_embed, kernel_size=7, padding=3), nn.BatchNorm1d(d_embed), nn.ELU(),
+            nn.AdaptiveAvgPool1d(1)
+        )
+    def forward(self, x):
+        B, C, T = x.size()
+        out = self.encoder(x.view(B * C, 1, T))
+        return out.view(B, C, self.d_embed)
+
+class RegionGroupedFusion(nn.Module):
+    def __init__(self, d_embed=128, n_classes=2):
+        super().__init__()
+        self.regions = {
+            "frontal": [0,1,2,3,16,17,18], "temporal": [4,5,12,13],
+            "central": [6,7,19,20,21], "parietal": [8,9,22,23], "occipital": [10,11,24,25]
+        }
+        self.intra_attentions = nn.ModuleDict({
+            r: nn.Sequential(nn.Linear(d_embed, d_embed//2), nn.Tanh(), nn.Linear(d_embed//2, 1), nn.Softmax(dim=1)) 
+            for r in self.regions.keys()
+        })
+        self.group_classifiers = nn.ModuleDict({r: nn.Linear(d_embed, n_classes) for r in self.regions.keys()})
+        self.final_classifier = nn.Linear(len(self.regions) * d_embed, n_classes)
+
+    def forward(self, x_embed):
+        group_feats, group_logits = [], []
+        for region, channels in self.regions.items():
+            region_x = x_embed[:, channels, :] 
+            attn = self.intra_attentions[region](region_x)
+            pooled = torch.sum(region_x * attn, dim=1)
+            group_feats.append(pooled)
+            group_logits.append(self.group_classifiers[region](pooled))
+        return self.final_classifier(torch.cat(group_feats, dim=1)), group_logits
+
+class SpectralDecouplingLoss(nn.Module):
+    def __init__(self, lambda_base=0.1):
+        super().__init__()
+        self.ce, self.lambda_base = nn.CrossEntropyLoss(), lambda_base
+    def forward(self, logits, y, group_logits, inv_scores):
+        sd_penalty = sum((self.lambda_base / (inv_scores[k] + 1e-4)) * torch.mean(z ** 2) for k, z in enumerate(group_logits))
+        return self.ce(logits, y) + sd_penalty
+
+class CIBNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.encoder = PerChannelCNNEncoder()
+        self.fusion = RegionGroupedFusion()
+    def forward(self, x):
+        return self.fusion(self.encoder(x))
+
+# ==========================================
+# EVALUATION & TRAINING HARNESS
+# ==========================================
+def compute_metrics(y_true, y_pred):
+    acc = accuracy_score(y_true, y_pred)
+    majority_acc = np.max(np.unique(y_true, return_counts=True)[1]) / len(y_true)
+    return acc, acc - majority_acc, f1_score(y_true, y_pred, average='macro', zero_division=0)
+
+if __name__ == '__main__':
+    # >>> CHANGE THIS LINE BEFORE RUNNING ON HPC <<<
+    HPC_DATA_PATH = "/home/sankhadeep/Group5_Research/deap_dataset/deap-dataset/data_preprocessed_python/"  
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"HPC Node initialized. Device: {device}")
+    
+    if not os.path.exists(HPC_DATA_PATH) or not os.path.exists(os.path.join(HPC_DATA_PATH, 's01.dat')):
+        print(f"ERROR: Dataset not found at {HPC_DATA_PATH}.")
+        print("Please upload DEAP and edit HPC_DATA_PATH in this script!")
+        exit(1)
+        
+    print("Loading DEAP Dataset (this will take a minute or two)...")
+    dataset = DEAPDataset(data_path=HPC_DATA_PATH, target='valence')
+    
+    logo = LeaveOneGroupOut()
+    subject_ids = dataset.subject_ids
+    
+    print("Starting LOSO Cross-Validation Training on CIB-Net...")
+    # Using uniform invariance scores for this test run (No Stage B loaded)
+    inv_scores = torch.ones(5).to(device) 
+    
+    fold_metrics = []
+    
+    for fold, (train_idx, test_idx) in enumerate(logo.split(dataset.x, dataset.y, groups=subject_ids)):
+        test_subject = subject_ids[test_idx[0]]
+        print(f"\n--- Fold {fold + 1}/32 (Test Subject: {test_subject}) ---")
+        
+        train_loader, test_loader = get_dataloaders(dataset, train_idx, test_idx, batch_size=4)
+        
+        torch.set_num_threads(2)
+        model = CIBNet().to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+        sd_loss_fn = SpectralDecouplingLoss()
+        
+        best_acc = 0
+        for epoch in range(50):
+            model.train()
+            for batch_idx, (x, y, _) in enumerate(train_loader):
+                x, y = x.to(device), y.to(device)
+                optimizer.zero_grad()
+                logits, group_logits = model(x)
+                loss = sd_loss_fn(logits, y, group_logits, inv_scores)
+                loss.backward()
+                optimizer.step()
+                
+                if batch_idx % 10 == 0:
+                    vram_mb = torch.cuda.memory_allocated() / (1024 * 1024)
+                    print(f"    [Epoch {epoch+1}] Batch {batch_idx}/{len(train_loader)} processed... VRAM: {vram_mb:.2f} MB")
+                    torch.cuda.empty_cache()
+                
+            model.eval()
+            all_preds, all_targets = [], []
+            with torch.no_grad():
+                for x, y, _ in test_loader:
+                    x = x.to(device)
+                    logits, _ = model(x)
+                    all_preds.extend(torch.argmax(logits, dim=1).cpu().numpy())
+                    all_targets.extend(y.numpy())
+                    
+            acc, delta, macro = compute_metrics(all_targets, all_preds)
+            if acc > best_acc: best_acc = acc
+            print(f"  Epoch {epoch+1}/50 | Test Acc: {acc:.4f} | Macro F1: {macro:.4f}")
+            
+        fold_metrics.append(best_acc)
+        print(f"Best Fold Acc: {best_acc:.4f}")
+        
+    print("\n==============================")
+    print(f"FINAL CIB-NET LOSO ACCURACY: {np.mean(fold_metrics):.4f} ± {np.std(fold_metrics):.4f}")
+    print("==============================")
+
+EOF
+
+python3 -u cib_net_hpc_run.py

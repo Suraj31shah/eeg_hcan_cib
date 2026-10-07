@@ -1,0 +1,37 @@
+dataset: "DREAMER"
+data_path: "/home/sankhadeep/Group5_Research/dreamer-dataset/DREAMER.mat"
+target: "valence"         # 'valence' or 'arousal'
+binarize: "fixed"         # We threshold at 3.0
+
+n_channels: 14            # Emotiv EPOC uses 14 channels
+n_periph_features: 12     # 6 stats x 2 ECG channels
+n_classes: 2
+
+# Signal details
+sample_rate: 128          
+trial_length_sec: 199     # Varies, but not strictly used here
+baseline_sec: 61          
+window_sec: 4.0
+overlap_sec: 2.0
+
+# HCAN-CIB specific
+d_embed: 64
+lambda_sd: 0.001          # spectral decoupling strength
+alpha_modality: 0.3       # weight for modality aux loss
+beta_region: 0.2          # weight for region aux loss
+
+training:
+  optimizer: "AdamW"
+  lr: 0.001
+  weight_decay: 0.01
+  epochs: 5
+  batch_size: 64
+
+loso:
+  n_subjects: 23          # DREAMER has 23 subjects
+  save_per_fold: true
+
+imbalance:
+  method: "none"   # options: none | class_weight | logit_adj | smote | v_smote | deepsmote | gamo
+  smote_k: 5
+  oversample_in: "embedding"   # raw | embedding | de_features
