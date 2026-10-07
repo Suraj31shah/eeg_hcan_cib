@@ -1,0 +1,21 @@
+dataset: "DEAP"
+data_path: "D:/Deep Learning Lab/Research/deap-dataset/data_preprocessed_python"  # Change this to actual DEAP path
+target: "valence"         # 'valence' or 'arousal'
+n_channels: 32
+n_classes: 2
+
+# Original is 128Hz, trial length is 60s + 3s baseline = 63s
+sample_rate: 128          
+trial_length_sec: 60
+baseline_sec: 3           
+
+training:
+  optimizer: "Adam"
+  lr: 0.001
+  weight_decay: 0.0001
+  epochs: 50
+  batch_size: 64
+
+loso:
+  n_subjects: 32
+  save_per_fold: true

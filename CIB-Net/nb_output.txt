@@ -1,0 +1,198 @@
+﻿=== Cell 2 Outputs ===
+==========================================================
+  ENVIRONMENT SANITY CHECK
+==========================================================
+  Python executable : d:\EEG_5Stages\venv\Scripts\python.exe
+  sys.prefix        : d:\EEG_5Stages\venv
+  Venv status       : Γ£à  Correct isolated venv
+
+  Γ£à  torch          installed=2.6.0+cu124 
+  Γ£à  numpy          installed=2.5.3       
+  Γ£à  scipy          installed=1.18.1      
+  Γ£à  networkx       installed=3.7         
+  Γ£à  sklearn        installed=1.9.1       
+  Γ£à  tqdm           installed=4.70.1      
+  Γ£à  matplotlib     installed=3.11.2      
+  Γ£à  seaborn        installed=0.13.2      
+
+  Γ£à  Dataset path   : D:/EEG_5Stages/deap-dataset/data_preprocessed_python
+  Γ£à  .dat files     : 32 found  (s01.dat ΓÇª s32.dat)
+
+==========================================================
+  ≡ƒÄë  All checks passed ΓÇö ready to train!
+==========================================================
+
+=== Cell 4 Outputs ===
+====================================================
+  PyTorch Version   : 2.6.0+cu124
+  CUDA Available    : True
+  GPU Name          : NVIDIA GeForce RTX 4050 Laptop GPU
+  CUDA Version      : 12.4
+  Compute Cap.      : 8.9
+  Total VRAM        : 6.44 GB
+  SM Count          : 20
+  AMP Tensor Cores  : Γ£à  (Ada Lovelace / RTX 4050)
+====================================================
+
+≡ƒöÑ Active device : cuda
+ΓÜí  Mixed Precision (AMP) ENABLED ΓÇö ~1.5ΓÇô2├ù speedup on RTX 4050
+
+=== Cell 6 Outputs ===
+Γ£à  All imports successful.
+
+=== Cell 8 Outputs ===
+Γ£à  Preprocessing functions defined.
+
+=== Cell 10 Outputs ===
+Γ£à  DEAPDataset + DataLoader helpers defined.
+
+=== Cell 12 Outputs ===
+==================================================
+  DATA_PATH  : D:/EEG_5Stages/deap-dataset/data_preprocessed_python
+  TARGET     : valence
+  BATCH_SIZE : 16
+  EPOCHS     : 50
+  LR         : 0.0001
+  USE_AMP    : True  (RTX 4050 mixed precision)
+  CKPT_DIR   : D:/EEG_5Stages/checkpoints
+==================================================
+
+Γ£à  32 .dat files confirmed: s01.dat ΓÇª s32.dat
+
+=== Cell 14 Outputs ===
+Γ£à  Checkpoint found ΓÇö loading preprocessed arrays (fast path)...
+    Loaded from: D:/EEG_5Stages/checkpoints\dataset_checkpoint.npz
+
+≡ƒôè  Dataset Summary
+    Total trials     : 1280
+    Unique subjects  : 32
+    EEG channels     : 32
+    Time samples     : 7680
+    Label dist (0/1) : [1011  269]
+
+=== Cell 16 Outputs ===
+Γ£à  CIB-Net defined  |  Trainable params: 133,713
+
+=== Cell 18 Outputs ===
+Γ£à  Loss functions and metrics defined.
+
+=== Cell 20 Outputs ===
+≡ƒôé  Resuming: 2 folds done, 30 remaining.
+
+====================================================
+  CIB-Net LOSO  |  30 folds left
+  Batch=16  Epochs=50  LR=0.0001  AMP=True
+====================================================
+
+  ΓÅ¡∩╕Å  Fold 01/32  (Subj 01) ΓÇö already done, skipping.
+  ΓÅ¡∩╕Å  Fold 02/32  (Subj 02) ΓÇö already done, skipping.
+
+['Fold 03/32 | Subj 03:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 03 | Best Acc=0.5750 | Macro-F1=0.5747 | ╬ö=+0.0500
+
+['Fold 04/32 | Subj 04:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 04 | Best Acc=0.9000 | Macro-F1=0.4737 | ╬ö=+0.0000
+
+['Fold 05/32 | Subj 05:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 05 | Best Acc=0.7250 | Macro-F1=0.4203 | ╬ö=+0.0000
+
+['Fold 06/32 | Subj 06:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 06 | Best Acc=0.7500 | Macro-F1=0.7442 | ╬ö=+0.1750
+
+['Fold 07/32 | Subj 07:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 07 | Best Acc=0.7500 | Macro-F1=0.4286 | ╬ö=+0.0000
+
+['Fold 08/32 | Subj 08:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 08 | Best Acc=0.8000 | Macro-F1=0.5429 | ╬ö=+0.0000
+
+['Fold 09/32 | Subj 09:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 09 | Best Acc=0.8750 | Macro-F1=0.4667 | ╬ö=+0.0000
+
+['Fold 10/32 | Subj 10:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 10 | Best Acc=0.8000 | Macro-F1=0.6537 | ╬ö=+0.0250
+
+['Fold 11/32 | Subj 11:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 11 | Best Acc=0.6250 | Macro-F1=0.3846 | ╬ö=+0.0000
+
+['Fold 12/32 | Subj 12:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 12 | Best Acc=0.9500 | Macro-F1=0.4872 | ╬ö=+0.0000
+
+['Fold 13/32 | Subj 13:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 13 | Best Acc=0.9500 | Macro-F1=0.4872 | ╬ö=+0.0000
+
+['Fold 14/32 | Subj 14:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 14 | Best Acc=0.8000 | Macro-F1=0.4444 | ╬ö=+0.0000
+
+['Fold 15/32 | Subj 15:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 15 | Best Acc=0.7000 | Macro-F1=0.4118 | ╬ö=+0.0000
+
+['Fold 16/32 | Subj 16:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 16 | Best Acc=0.8750 | Macro-F1=0.6086 | ╬ö=+0.0250
+
+['Fold 17/32 | Subj 17:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 17 | Best Acc=0.7750 | Macro-F1=0.4366 | ╬ö=+0.0000
+
+['Fold 18/32 | Subj 18:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 18 | Best Acc=0.8250 | Macro-F1=0.4521 | ╬ö=+0.0000
+
+['Fold 19/32 | Subj 19:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 19 | Best Acc=0.8750 | Macro-F1=0.4667 | ╬ö=+0.0000
+
+['Fold 20/32 | Subj 20:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 20 | Best Acc=0.8000 | Macro-F1=0.4444 | ╬ö=-0.0500
+
+['Fold 21/32 | Subj 21:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 21 | Best Acc=0.9500 | Macro-F1=0.4872 | ╬ö=+0.0000
+
+['Fold 22/32 | Subj 22:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 22 | Best Acc=0.8500 | Macro-F1=0.6571 | ╬ö=+0.0000
+
+['Fold 23/32 | Subj 23:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 23 | Best Acc=0.6750 | Macro-F1=0.6034 | ╬ö=+0.0750
+
+['Fold 24/32 | Subj 24:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 24 | Best Acc=0.8250 | Macro-F1=0.4521 | ╬ö=-0.0750
+
+['Fold 25/32 | Subj 25:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 25 | Best Acc=0.8750 | Macro-F1=0.6086 | ╬ö=+0.0000
+
+['Fold 26/32 | Subj 26:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 26 | Best Acc=0.7500 | Macro-F1=0.4286 | ╬ö=+0.0000
+
+['Fold 27/32 | Subj 27:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 27 | Best Acc=0.8500 | Macro-F1=0.4595 | ╬ö=+0.0000
+
+['Fold 28/32 | Subj 28:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 28 | Best Acc=0.7500 | Macro-F1=0.4286 | ╬ö=+0.0000
+
+['Fold 29/32 | Subj 29:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 29 | Best Acc=0.8750 | Macro-F1=0.4667 | ╬ö=+0.0000
+
+['Fold 30/32 | Subj 30:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 30 | Best Acc=0.7500 | Macro-F1=0.4286 | ╬ö=+0.0000
+
+['Fold 31/32 | Subj 31:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 31 | Best Acc=0.6750 | Macro-F1=0.6647 | ╬ö=+0.0750
+
+['Fold 32/32 | Subj 32:   0%|          | 0/50 [00:00<?, ?it/s]']
+  Γ£à  Fold 32 | Best Acc=0.7750 | Macro-F1=0.5257 | ╬ö=+0.0250
+
+====================================================
+  ≡ƒÄë  ALL 32 FOLDS COMPLETE!
+====================================================
+
+=== Cell 22 Outputs ===
+====================================================
+  ≡ƒôè  FINAL CIB-NET LOSO RESULTS
+====================================================
+  Accuracy   : 0.7906 ┬▒ 0.1036
+  Macro F1   : 0.5020
+  ╬ö Trivial  : -0.0008
+  Folds Done : 32/32
+====================================================
+
+≡ƒÆ╛  Final results saved ΓåÆ D:/EEG_5Stages/checkpoints\cib_net_final_results.json
+
+['<Figure size 1800x500 with 3 Axes>']
+≡ƒôê  Plot saved ΓåÆ D:/EEG_5Stages/checkpoints\cib_net_results.png
+

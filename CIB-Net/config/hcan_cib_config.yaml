@@ -1,0 +1,36 @@
+dataset: "DEAP"
+data_path: "/home/sankhadeep/Group5_Research/deap_dataset/deap-dataset/data_preprocessed_python/"
+target: "valence"         # 'valence' or 'arousal'
+binarize: "median"        # 'median' (Task P) or 'fixed' (Task F)
+
+n_channels: 32
+n_classes: 2
+
+# Signal details
+sample_rate: 128          
+trial_length_sec: 60
+baseline_sec: 3           
+window_sec: 4.0
+overlap_sec: 2.0
+
+# HCAN-CIB specific
+d_embed: 64
+lambda_sd: 0.001          # spectral decoupling strength
+alpha_modality: 0.3       # weight for modality aux loss
+beta_region: 0.2          # weight for region aux loss
+
+training:
+  optimizer: "AdamW"
+  lr: 0.001
+  weight_decay: 0.01
+  epochs: 5
+  batch_size: 64
+
+loso:
+  n_subjects: 32
+  save_per_fold: true
+
+imbalance:
+  method: "none"   # options: none | class_weight | logit_adj | smote | v_smote | deepsmote | gamo
+  smote_k: 5
+  oversample_in: "embedding"   # raw | embedding | de_features
