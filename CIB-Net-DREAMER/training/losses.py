@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 
 class SpectralDecouplingLoss(nn.Module):
-    def __init__(self, lambda_sd=0.001, alpha_modality=0.3, beta_region=0.2):
+    def __init__(self, lambda_sd=0.001, alpha_modality=0.3, beta_region=0.2, weight=None):
         super(SpectralDecouplingLoss, self).__init__()
-        self.ce = nn.CrossEntropyLoss()
+        self.ce = nn.CrossEntropyLoss(weight=weight)
         self.lambda_sd = lambda_sd
         self.alpha_modality = alpha_modality
         self.beta_region = beta_region

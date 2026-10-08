@@ -41,11 +41,17 @@ class EEGNet(nn.Module):
         )
         
         # Calculate output size dynamically
-        # pool 1: T // 4, pool 2: (T // 4) // 8 = T // 32
-        # T is 7680 (after 3s baseline is removed from 8064) -> 7680 // 32 = 240
+        # Since T could vary depending on windowing strategy, we do a dummy pass
+        dummy_x = torch.zeros(1, 1, n_channels, sample_rate * 4) # Assume 4s window 
+        # But wait, T is passed implicitly. We can just use AdaptiveAvgPool2d to force a fixed size!
+        # Or calculate it for 512 samples. Let's use 512 since window_sec=4.0 and sample_rate=128
+        
+        dummy_x = torch.zeros(1, 1, n_channels, 512)
+        dummy_out = self.block3(self.block2(self.block1(dummy_x)))
+        flatten_size = dummy_out.view(1, -1).shape[1]
         
         self.classifier = nn.Sequential(
-            nn.Linear(F2 * 240, n_classes)
+            nn.Linear(flatten_size, n_classes)
         )
 
     def forward(self, x):
