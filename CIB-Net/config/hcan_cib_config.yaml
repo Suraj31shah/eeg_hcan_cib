@@ -1,10 +1,11 @@
 dataset: "DEAP"
-data_path: "/home/sankhadeep/Group5_Research/deap_dataset/deap-dataset/data_preprocessed_python/"
+data_path: "D:/Deep Learning Lab/Research/deap-dataset/data_preprocessed_python"
 target: "valence"         # 'valence' or 'arousal'
 binarize: "median"        # 'median' (Task P) or 'fixed' (Task F)
 
 n_channels: 32
 n_classes: 2
+n_regions: 5
 
 # Signal details
 sample_rate: 128          
@@ -23,7 +24,7 @@ training:
   optimizer: "AdamW"
   lr: 0.001
   weight_decay: 0.01
-  epochs: 5
+  epochs: 40
   batch_size: 64
 
 loso:

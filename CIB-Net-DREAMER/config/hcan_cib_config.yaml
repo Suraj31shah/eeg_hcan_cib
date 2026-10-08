@@ -6,6 +6,7 @@ binarize: "fixed"         # We threshold at 3.0
 n_channels: 14            # Emotiv EPOC uses 14 channels
 n_periph_features: 12     # 6 stats x 2 ECG channels
 n_classes: 2
+n_regions: 4
 
 # Signal details
 sample_rate: 128          
@@ -24,7 +25,7 @@ training:
   optimizer: "AdamW"
   lr: 0.001
   weight_decay: 0.01
-  epochs: 5
+  epochs: 40
   batch_size: 64
 
 loso:
