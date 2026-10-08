@@ -28,19 +28,24 @@ class HCANCIBNet(nn.Module):
         # 4. Multimodal Fusion (HCAN + Shallow Prior)
         self.fusion = HCANCrossAttentionFusion(d_embed=d_embed, n_heads=4, n_classes=n_classes)
         
-    def forward(self, x_eeg, x_periph):
+    def forward(self, x_eeg, x_periph, y=None, subj_ids=None, smote_k=0):
         """
         x_eeg: [B, 32, 512]
         x_periph: [B, 24]
+        y, subj_ids, smote_k: Optional params for latent-space V-SMOTE oversampling
         Returns:
-            final_logits: [B, 2]
-            group_logits: List of 5 region aux logits [B, 2] (for Region SD)
-            z_eeg: EEG modality aux logit [B, 2] (for Modality SD)
-            z_periph: Periph modality aux logit [B, 2] (for Modality SD)
+            final_logits, group_logits, z_eeg, z_periph, (y, subj_ids if SMOTE modified the batch size)
         """
         # 1. Encode EEG Channels -> [B, 32, d_embed]
         channel_embeddings = self.eeg_encoder(x_eeg)
         
+        # --- V-SMOTE Latent Oversampling ---
+        if self.training and smote_k > 0 and y is not None and subj_ids is not None:
+            from training.smote import apply_v_smote
+            channel_embeddings, x_periph, y, subj_ids = apply_v_smote(
+                channel_embeddings, x_periph, y, subj_ids, k_neighbors=smote_k
+            )
+            
         # 2. Tokenize Regions -> group_feats: list of 5 [B, d_embed], group_logits: list of 5 [B, 2]
         # We manually call the inner loop of RegionGroupedFusion to avoid the unused final_classifier
         group_feats = []
@@ -71,4 +76,4 @@ class HCANCIBNet(nn.Module):
         # 4. HCAN Fusion
         final_logits, z_eeg = self.fusion(periph_token, region_tokens)
         
-        return final_logits, group_logits, z_eeg, z_periph
+        return final_logits, group_logits, z_eeg, z_periph, y, subj_ids

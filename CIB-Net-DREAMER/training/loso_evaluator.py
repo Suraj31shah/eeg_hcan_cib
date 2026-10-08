@@ -38,7 +38,7 @@ from training.losses import SpectralDecouplingLoss
 # --------------------------------------------------------------------------- #
 # Training / evaluation primitives
 # --------------------------------------------------------------------------- #
-def train_epoch(model, dataloader, sd_loss_fn, invariance_gate, optimizer, scaler, device):
+def train_epoch(model, dataloader, sd_loss_fn, invariance_gate, optimizer, scaler, device, smote_k=0):
     model.train()
     invariance_gate.train()
     use_amp = device == "cuda"
@@ -53,10 +53,12 @@ def train_epoch(model, dataloader, sd_loss_fn, invariance_gate, optimizer, scale
         optimizer.zero_grad(set_to_none=True)
 
         with torch.autocast(device_type="cuda" if use_amp else "cpu", enabled=use_amp):
-            final_logits, group_logits, z_eeg, z_periph = model(x_eeg, x_periph)
-            invariance_gate.update(group_logits, y, subj_ids)
+            final_logits, group_logits, z_eeg, z_periph, y_smote, subj_ids_smote = model(
+                x_eeg, x_periph, y=y, subj_ids=subj_ids, smote_k=smote_k
+            )
+            invariance_gate.update(group_logits, y_smote, subj_ids_smote)
             inv_scores = invariance_gate.get_gates()
-            loss = sd_loss_fn(final_logits, y, group_logits, inv_scores, z_eeg, z_periph)
+            loss = sd_loss_fn(final_logits, y_smote, group_logits, inv_scores, z_eeg, z_periph)
 
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
@@ -67,7 +69,7 @@ def train_epoch(model, dataloader, sd_loss_fn, invariance_gate, optimizer, scale
         total_loss += loss.item()
         n_batches += 1
         all_preds.extend(torch.argmax(final_logits.detach(), dim=1).cpu().numpy())
-        all_targets.extend(y.cpu().numpy())
+        all_targets.extend(y_smote.cpu().numpy())
 
     return total_loss / max(n_batches, 1), compute_metrics(all_targets, all_preds)
 
@@ -183,18 +185,35 @@ def run_hcan_cib_loso(dataset, model_class, config_path, seed=0, results_dir="re
             shared_weights=True, region_dropout_p=0.2,
         ).to(device)
         invariance_gate = InvarianceGate(n_regions=n_regions, decay=0.9, tau=1.0).to(device)
+        class_weights_tensor = None
+        if config.get("imbalance", {}).get("method") == "class_weight":
+            y_train = np.array([dataset.labels[i] for i in fit_idx])
+            counts = np.bincount(y_train, minlength=2)
+            total = len(y_train)
+            if counts[0] > 0 and counts[1] > 0:
+                w0 = total / (2.0 * counts[0])
+                w1 = total / (2.0 * counts[1])
+                class_weights_tensor = torch.tensor([w0, w1], dtype=torch.float32).to(device)
+                print(f"  Applied Class Weights for Fold {fold+1}: [Class 0: {w0:.3f}, Class 1: {w1:.3f}]")
+
         sd_loss_fn = SpectralDecouplingLoss(
             lambda_sd=config["lambda_sd"], alpha_modality=config["alpha_modality"],
-            beta_region=config["beta_region"],
+            beta_region=config["beta_region"], weight=class_weights_tensor
         ).to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=tcfg["lr"], weight_decay=tcfg["weight_decay"])
 
         # ---- train with validation-based model selection ----
         best_val, best_epoch, bad = -np.inf, -1, 0
         best_ckpt = None
+        smote_k = 0
+        if config.get("imbalance", {}).get("method") in ["v_smote", "smote"]:
+            smote_k = config.get("imbalance", {}).get("smote_k", 5)
+            if fold == 0:
+                print(f"  [INFO] Latent V-SMOTE enabled with k={smote_k}")
+
         for epoch in range(tcfg["epochs"]):
             _, train_m = train_epoch(model, train_loader, sd_loss_fn, invariance_gate,
-                                     optimizer, scaler, device)
+                                     optimizer, scaler, device, smote_k=smote_k)
             val_pred = predict_trials(model, val_loader, device)
             val_auc = pooled_val_auroc(val_pred)
             print(f"  Epoch {epoch + 1:02d}/{tcfg['epochs']} | Train Acc: {train_m['accuracy']:.4f} "

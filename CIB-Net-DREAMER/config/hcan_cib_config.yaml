@@ -1,5 +1,5 @@
 dataset: "DREAMER"
-data_path: "/home/sankhadeep/Group5_Research/dreamer-dataset/DREAMER.mat"
+data_path: "/content/eeg_hcan_cib/CIB-Net-DREAMER/DREAMER.mat"
 target: "valence"         # 'valence' or 'arousal'
 binarize: "fixed"         # We threshold at 3.0
 
@@ -33,6 +33,6 @@ loso:
   save_per_fold: true
 
 imbalance:
-  method: "none"   # options: none | class_weight | logit_adj | smote | v_smote | deepsmote | gamo
+  method: "class_weight"   # options: none | class_weight | logit_adj | smote | v_smote | deepsmote | gamo
   smote_k: 5
   oversample_in: "embedding"   # raw | embedding | de_features
