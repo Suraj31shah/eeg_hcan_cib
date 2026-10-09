@@ -42,10 +42,10 @@ class EEGNet(nn.Module):
         
         # Calculate output size dynamically
         # pool 1: T // 4, pool 2: (T // 4) // 8 = T // 32
-        # T is 7680 (after 3s baseline is removed from 8064) -> 7680 // 32 = 240
+        # T is 512 (after 4.0s windowing at 128Hz) -> 512 // 32 = 16
         
         self.classifier = nn.Sequential(
-            nn.Linear(F2 * 240, n_classes)
+            nn.Linear(F2 * 16, n_classes)
         )
 
     def forward(self, x):
