@@ -33,6 +33,6 @@ loso:
   save_per_fold: true
 
 imbalance:
-  method: "class_weight"   # options: none | class_weight | logit_adj | smote | v_smote | deepsmote | gamo
+  method: "smote"   # options: none | class_weight | logit_adj | smote | v_smote | deepsmote | gamo
   smote_k: 5
   oversample_in: "embedding"   # raw | embedding | de_features

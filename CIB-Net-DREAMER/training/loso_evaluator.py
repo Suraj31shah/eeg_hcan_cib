@@ -85,7 +85,7 @@ def predict_trials(model, dataloader, device):
 
     for x_eeg, x_periph, y, subj_ids, trial_ids in tqdm(dataloader, desc="Evaluating", leave=False):
         x_eeg, x_periph = x_eeg.to(device), x_periph.to(device)
-        final_logits, _, _, _ = model(x_eeg, x_periph)
+        final_logits, _, _, _, _, _ = model(x_eeg, x_periph)
         final_logits = final_logits.float().cpu().numpy()
         for i in range(len(y)):
             key = (int(subj_ids[i]), int(trial_ids[i]))
