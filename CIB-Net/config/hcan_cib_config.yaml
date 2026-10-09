@@ -1,5 +1,5 @@
 dataset: "DEAP"
-data_path: "D:/Deep Learning Lab/Research/deap-dataset/data_preprocessed_python"
+data_path: "/kaggle/input/datasets/manh123df/deap-dataset/deap-dataset/data_preprocessed_python"
 target: "valence"         # 'valence' or 'arousal'
 binarize: "median"        # 'median' (Task P) or 'fixed' (Task F)
 
