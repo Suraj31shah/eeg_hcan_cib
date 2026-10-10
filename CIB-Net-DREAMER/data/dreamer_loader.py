@@ -76,6 +76,12 @@ class WindowedDREAMERDataset(Dataset):
             ecg_stimuli = subj['ECG'][0, 0]['stimuli'][0, 0] # [18, 1]
             
             n_trials = eeg_stimuli.shape[0]
+            
+            eeg_all = []
+            ecg_all = []
+            labels_all = []
+            
+            # 1. Collect all raw trials for the subject
             for trial_idx in range(n_trials):
                 # EEG: [samples, 14] -> Transpose to [14, samples]
                 trial_eeg = eeg_stimuli[trial_idx, 0].T 
@@ -85,6 +91,30 @@ class WindowedDREAMERDataset(Dataset):
                 label = scores[trial_idx, 0]
                 if self.binarize:
                     label = 1 if label > 3 else 0
+                    
+                eeg_all.append(trial_eeg)
+                ecg_all.append(trial_ecg)
+                labels_all.append(label)
+                
+            # 2. Compute TRANSDUCTIVE PER-SUBJECT Z-SCORE NORMALIZATION
+            eeg_concat = np.concatenate(eeg_all, axis=1) # [14, total_samples]
+            ecg_concat = np.concatenate(ecg_all, axis=0) # [total_samples, 2]
+            
+            eeg_subj_mean = np.mean(eeg_concat, axis=1, keepdims=True)
+            eeg_subj_std = np.std(eeg_concat, axis=1, keepdims=True)
+            
+            ecg_subj_mean = np.mean(ecg_concat, axis=0, keepdims=True)
+            ecg_subj_std = np.std(ecg_concat, axis=0, keepdims=True)
+            
+            # 3. Apply normalization and extract windows
+            for trial_idx in range(n_trials):
+                trial_eeg = eeg_all[trial_idx]
+                trial_ecg = ecg_all[trial_idx]
+                label = labels_all[trial_idx]
+                
+                # Apply normalization
+                trial_eeg = (trial_eeg - eeg_subj_mean) / (eeg_subj_std + 1e-8)
+                trial_ecg = (trial_ecg - ecg_subj_mean) / (ecg_subj_std + 1e-8)
                     
                 n_samples_eeg = trial_eeg.shape[1]
                 n_samples_ecg = trial_ecg.shape[0]

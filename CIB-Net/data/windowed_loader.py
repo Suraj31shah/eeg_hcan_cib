@@ -94,30 +94,44 @@ class WindowedDEAPDataset(Dataset):
                 
             binary_labels = (raw_labels > threshold).astype(np.int64)
             
+            # Filter and collect all trials for the subject to compute Subject-level stats
+            eeg_all_filtered = []
+            periph_all = []
+            
             for trial_idx in range(40):
-                trial_data = data[trial_idx] # [40, 8064]
-                
-                # Split EEG and Peripheral
+                trial_data = data[trial_idx]
                 eeg = trial_data[:32, :]
                 periph = trial_data[32:, :]
                 
                 # Preprocess EEG
                 eeg_filtered = butter_bandpass_filter(eeg, 4.0, 45.0, self.fs)
                 
-                # Baseline z-scoring
-                baseline_data = eeg_filtered[:, :self.baseline_samples]
-                baseline_mean = np.mean(baseline_data, axis=-1, keepdims=True)
-                baseline_std = np.std(baseline_data, axis=-1, keepdims=True)
+                # Drop baseline samples
+                eeg_all_filtered.append(eeg_filtered[:, self.baseline_samples:])
+                periph_all.append(periph[:, self.baseline_samples:])
                 
-                # Normalize the 60s trial
-                trial_eeg = eeg_filtered[:, self.baseline_samples:]
-                trial_eeg = (trial_eeg - baseline_mean) / (baseline_std + 1e-8)
+            eeg_all_filtered = np.array(eeg_all_filtered) # [40, 32, samples]
+            periph_all = np.array(periph_all) # [40, 8, samples]
+            
+            # --- TRANSDUCTIVE PER-SUBJECT Z-SCORE NORMALIZATION ---
+            # Calculate mean and std across all trials and time for this specific subject
+            eeg_subj_mean = np.mean(eeg_all_filtered, axis=(0, 2), keepdims=True)
+            eeg_subj_std = np.std(eeg_all_filtered, axis=(0, 2), keepdims=True)
+            
+            periph_subj_mean = np.mean(periph_all, axis=(0, 2), keepdims=True)
+            periph_subj_std = np.std(periph_all, axis=(0, 2), keepdims=True)
+            
+            # Apply normalization
+            eeg_all_norm = (eeg_all_filtered - eeg_subj_mean) / (eeg_subj_std + 1e-8)
+            periph_all_norm = (periph_all - periph_subj_mean) / (periph_subj_std + 1e-8)
+            
+            # Windowing Phase
+            for trial_idx in range(40):
+                trial_eeg = eeg_all_norm[trial_idx]
+                trial_periph = periph_all_norm[trial_idx]
                 
-                # Preprocess Peripheral (remove baseline samples, then extract features)
-                trial_periph = periph[:, self.baseline_samples:]
                 periph_features = self._extract_peripheral_features(trial_periph)
                 
-                # Windowing
                 n_samples = trial_eeg.shape[-1]
                 for start in range(0, n_samples - self.window_samples + 1, self.step_samples):
                     end = start + self.window_samples
