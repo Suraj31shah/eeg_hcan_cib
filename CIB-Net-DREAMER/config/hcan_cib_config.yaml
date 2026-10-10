@@ -1,5 +1,5 @@
 dataset: "DREAMER"
-data_path: "/kaggle/input/datasets/phhasian0710/dreamer/DREAMER.mat"
+data_path: "/content/eeg_hcan_cib/CIB-Net-DREAMER/DREAMER.mat"
 target: "valence"         # 'valence' or 'arousal'
 binarize: "fixed"         # We threshold at 3.0
 
