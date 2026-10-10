@@ -64,8 +64,10 @@ def main():
         data_path = ""
 
     if not os.path.exists(data_path):
-        print(f"Data path '{data_path}' not found.")
-        data_path = input("Enter the absolute path to your DEAP/DREAMER dataset directory (containing s01.dat etc): ").strip()
+        print(f"Data path '{data_path}' not found from config.")
+        # Fallback to the Kaggle dataset path
+        data_path = "/kaggle/input/datasets/manh123df/deap-dataset/deap-dataset/data_preprocessed_python"
+        print(f"Falling back to Kaggle default path: {data_path}")
 
     dataset = WindowedDEAPDataset(data_path, binarize='median', window_sec=4.0, overlap_sec=2.0)
     
