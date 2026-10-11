@@ -53,8 +53,8 @@ def main():
     adj = dict(zip(others, holm(np.nan_to_num(raw_p, nan=1.0)))) if others else {}
     praw = dict(zip(others, raw_p))
 
-    lines = [f"| model | {a.metric} mean ± SE | 95% boot CI | p vs chance ({a.chance}) | "
-             f"Δ vs {ref} | paired p | Holm p |", "|---|---|---|---|---|---|---|"]
+    lines = [f"| model | {a.metric} mean +/- SE | 95% boot CI | p vs chance ({a.chance}) | "
+             f"Diff vs {ref} | paired p | Holm p |", "|---|---|---|---|---|---|---|"]
     for k, v in M.items():
         v = v[np.isfinite(v)]
         lo, hi = boot_ci(v)
@@ -63,15 +63,15 @@ def main():
         except ValueError:
             pc = float("nan")
         if k == ref:
-            tail = "— | — | —"
+            tail = "--- | --- | ---"
         else:
             tail = f"{np.nanmean(diffs[k]):+.3f} | {praw[k]:.3f} | {adj[k]:.3f}"
-        lines.append(f"| {k} | {v.mean():.3f} ± {v.std(ddof=1) / np.sqrt(len(v)):.3f} | "
+        lines.append(f"| {k} | {v.mean():.3f} +/- {v.std(ddof=1) / np.sqrt(len(v)):.3f} | "
                      f"[{lo:.3f}, {hi:.3f}] | {pc:.3f} | {tail} |")
     table = "\n".join(lines)
     print(table)
     if a.out:
-        open(a.out, "w").write(table + "\n")
+        open(a.out, "w", encoding="utf-8").write(table + "\n")
 
 
 if __name__ == "__main__":
