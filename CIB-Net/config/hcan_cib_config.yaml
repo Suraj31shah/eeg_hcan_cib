@@ -32,15 +32,6 @@ loso:
   save_per_fold: true
 
 imbalance:
-  method: "none"   # options: none | class_weight | logit_adj | smote | v_smote | deepsmote | gamo
+  method: "deepsmote"   # options: none | class_weight | logit_adj | smote | v_smote | deepsmote | gamo
   smote_k: 5
   oversample_in: "embedding"   # raw | embedding | de_features
-
-dann:
-  enabled: false               # set to true to enable Subject-Adversarial Domain Adaptation
-  mode: "subject_invariant"    # "subject_invariant" across fit subjects
-  lambda_max: 0.1              # peak adversarial gradient weight
-  gamma: 10.0                  # dynamic sigmoid ramp-up schedule factor
-  hidden_dim: 64               # discriminator hidden dimension
-  dropout: 0.2                 # discriminator dropout rate
-

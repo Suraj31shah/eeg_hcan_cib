@@ -21,14 +21,13 @@ class HCANCrossAttentionFusion(nn.Module):
         # We also need an EEG-level aux head for Modality Spectral Decoupling (z_eeg)
         self.eeg_aux_head = nn.Linear(d_embed, n_classes)
 
-    def forward(self, periph_token, region_tokens, return_embedding=False):
+    def forward(self, periph_token, region_tokens):
         """
         periph_token: [B, 1, d_embed] (Query)
         region_tokens: [B, 5, d_embed] from the 5 brain regions
         Returns:
             final_logits: [B, 2]
             z_eeg: [B, 2] (EEG-modality aux logit)
-            fused_token: [B, d_embed] (if return_embedding=True)
         """
         # 1. Create pooled EEG token (mean of region tokens) -> [B, 1, d_embed]
         pooled_eeg = torch.mean(region_tokens, dim=1, keepdim=True)
@@ -56,6 +55,4 @@ class HCANCrossAttentionFusion(nn.Module):
         # 7. Final Output
         final_logits = logit_deep + self.w_shallow * logit_shallow
         
-        if return_embedding:
-            return final_logits, z_eeg, fused_token
         return final_logits, z_eeg
