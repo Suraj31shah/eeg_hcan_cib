@@ -28,12 +28,13 @@ class HCANCIBNet(nn.Module):
         # 4. Multimodal Fusion (HCAN + Shallow Prior)
         self.fusion = HCANCrossAttentionFusion(d_embed=d_embed, n_heads=4, n_classes=n_classes)
         
-    def forward(self, x_eeg, x_periph, y=None, subj_ids=None, smote_k=0):
+    def forward(self, x_eeg, x_periph, y=None, subj_ids=None, smote_k=0, return_embedding=False):
         """
         x_eeg: [B, 32, 512]
         x_periph: [B, 24]
+        return_embedding: If True, also returns the 64-D fused_token representation for DANN/t-SNE
         Returns:
-            final_logits, group_logits, z_eeg, z_periph, y, subj_ids
+            final_logits, group_logits, z_eeg, z_periph, y, subj_ids [, fused_token]
         """
         # 1. Encode EEG Channels -> [B, 32, d_embed]
         channel_embeddings = self.eeg_encoder(x_eeg)
@@ -73,6 +74,9 @@ class HCANCIBNet(nn.Module):
         periph_token, z_periph = self.periph_encoder(x_periph)
         
         # 4. HCAN Fusion
-        final_logits, z_eeg = self.fusion(periph_token, region_tokens)
-        
-        return final_logits, group_logits, z_eeg, z_periph, y, subj_ids
+        if return_embedding:
+            final_logits, z_eeg, fused_token = self.fusion(periph_token, region_tokens, return_embedding=True)
+            return final_logits, group_logits, z_eeg, z_periph, y, subj_ids, fused_token
+        else:
+            final_logits, z_eeg = self.fusion(periph_token, region_tokens, return_embedding=False)
+            return final_logits, group_logits, z_eeg, z_periph, y, subj_ids

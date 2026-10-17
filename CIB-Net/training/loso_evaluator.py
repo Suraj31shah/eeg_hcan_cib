@@ -24,6 +24,7 @@ import os
 import json
 import numpy as np
 import torch
+import torch.nn as nn
 import yaml
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader, Subset
@@ -33,36 +34,74 @@ from evaluation.metrics import compute_metrics, print_metrics
 from training.subject_sampler import SubjectBalancedSampler
 from models.stage_b_invariance import InvarianceGate
 from training.losses import SpectralDecouplingLoss
+from models.dann import SubjectDiscriminator, compute_dann_lambda
 
 
 # --------------------------------------------------------------------------- #
 # Training / evaluation primitives
 # --------------------------------------------------------------------------- #
-def train_epoch(model, dataloader, sd_loss_fn, invariance_gate, optimizer, scaler, device, smote_k=0):
+def train_epoch(model, dataloader, sd_loss_fn, invariance_gate, optimizer, scaler, device,
+                smote_k=0, dann_module=None, subj_to_idx=None, epoch=0, total_epochs=40):
     model.train()
     invariance_gate.train()
     use_amp = device == "cuda"
 
     total_loss, n_batches = 0.0, 0
+    dann_total_loss, dann_correct, dann_total = 0.0, 0, 0
     all_preds, all_targets = [], []
 
-    for x_eeg, x_periph, y, subj_ids, trial_ids in tqdm(dataloader, desc="Training", leave=False):
+    dann_enabled = dann_module is not None
+    if dann_enabled:
+        discriminator, dann_loss_fn, dann_cfg = dann_module
+        discriminator.train()
+
+    for batch_idx, (x_eeg, x_periph, y, subj_ids, trial_ids) in enumerate(tqdm(dataloader, desc="Training", leave=False)):
         x_eeg, x_periph, y = x_eeg.to(device), x_periph.to(device), y.to(device)
         subj_ids = subj_ids.to(device)
 
         optimizer.zero_grad(set_to_none=True)
 
         with torch.autocast(device_type="cuda" if use_amp else "cpu", enabled=use_amp):
-            final_logits, group_logits, z_eeg, z_periph, y_smote, subj_ids_smote = model(
-                x_eeg, x_periph, y=y, subj_ids=subj_ids, smote_k=smote_k
-            )
+            if dann_enabled:
+                final_logits, group_logits, z_eeg, z_periph, y_smote, subj_ids_smote, fused_token = model(
+                    x_eeg, x_periph, y=y, subj_ids=subj_ids, smote_k=smote_k, return_embedding=True
+                )
+            else:
+                final_logits, group_logits, z_eeg, z_periph, y_smote, subj_ids_smote = model(
+                    x_eeg, x_periph, y=y, subj_ids=subj_ids, smote_k=smote_k, return_embedding=False
+                )
+
             invariance_gate.update(group_logits, y_smote, subj_ids_smote)
             inv_scores = invariance_gate.get_gates()
-            loss = sd_loss_fn(final_logits, y_smote, group_logits, inv_scores, z_eeg, z_periph)
+            loss_task = sd_loss_fn(final_logits, y_smote, group_logits, inv_scores, z_eeg, z_periph)
+
+            loss = loss_task
+
+            # --- DANN Subject-Adversarial Loss ---
+            if dann_enabled:
+                lambda_p = compute_dann_lambda(
+                    epoch, total_epochs, batch_idx, len(dataloader),
+                    lambda_max=dann_cfg.get("lambda_max", 0.1), gamma=dann_cfg.get("gamma", 10.0)
+                )
+                local_subj_labels = torch.tensor(
+                    [subj_to_idx[int(s)] for s in subj_ids_smote.cpu().numpy()],
+                    dtype=torch.long, device=device
+                )
+                subj_logits = discriminator(fused_token, lambda_val=lambda_p)
+                loss_dann = dann_loss_fn(subj_logits, local_subj_labels)
+                loss = loss + loss_dann
+
+                dann_total_loss += loss_dann.item()
+                dann_preds = torch.argmax(subj_logits.detach(), dim=1)
+                dann_correct += (dann_preds == local_subj_labels).sum().item()
+                dann_total += local_subj_labels.size(0)
 
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        all_params = list(model.parameters())
+        if dann_enabled:
+            all_params += list(discriminator.parameters())
+        torch.nn.utils.clip_grad_norm_(all_params, max_norm=1.0)
         scaler.step(optimizer)
         scaler.update()
 
@@ -71,7 +110,12 @@ def train_epoch(model, dataloader, sd_loss_fn, invariance_gate, optimizer, scale
         all_preds.extend(torch.argmax(final_logits.detach(), dim=1).cpu().numpy())
         all_targets.extend(y_smote.cpu().numpy())
 
-    return total_loss / max(n_batches, 1), compute_metrics(all_targets, all_preds)
+    metrics = compute_metrics(all_targets, all_preds)
+    if dann_enabled and dann_total > 0:
+        metrics["dann_loss"] = float(dann_total_loss / max(n_batches, 1))
+        metrics["dann_subj_acc"] = float(dann_correct / dann_total)
+
+    return total_loss / max(n_batches, 1), metrics
 
 
 @torch.no_grad()
@@ -185,6 +229,26 @@ def run_hcan_cib_loso(dataset, model_class, config_path, seed=0, results_dir="re
             shared_weights=True, region_dropout_p=0.2,
         ).to(device)
         invariance_gate = InvarianceGate(n_regions=n_regions, decay=0.9, tau=1.0).to(device)
+
+        # ---- DANN (Subject-Adversarial Domain Adaptation) Setup ----
+        dann_cfg = config.get("dann", {})
+        dann_module = None
+        subj_to_idx = None
+        if dann_cfg.get("enabled", False):
+            subj_to_idx = {int(s): i for i, s in enumerate(sorted(s_fit))}
+            discriminator = SubjectDiscriminator(
+                in_features=config["d_embed"],
+                num_classes=len(s_fit),
+                hidden_dim=dann_cfg.get("hidden_dim", 64),
+                dropout=dann_cfg.get("dropout", 0.2)
+            ).to(device)
+            dann_loss_fn = nn.CrossEntropyLoss().to(device)
+            dann_module = (discriminator, dann_loss_fn, dann_cfg)
+            if fold == 0:
+                print(f"  [INFO] DANN Subject-Adversarial Domain Adaptation ENABLED: "
+                      f"lambda_max={dann_cfg.get('lambda_max', 0.1)}, "
+                      f"classes={len(s_fit)} fit subjects")
+
         class_weights_tensor = None
         if config.get("imbalance", {}).get("method") == "class_weight":
             y_train = np.array([dataset.labels[i] for i in fit_idx])
@@ -200,7 +264,11 @@ def run_hcan_cib_loso(dataset, model_class, config_path, seed=0, results_dir="re
             lambda_sd=config["lambda_sd"], alpha_modality=config["alpha_modality"],
             beta_region=config["beta_region"], weight=class_weights_tensor
         ).to(device)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=tcfg["lr"], weight_decay=tcfg["weight_decay"])
+
+        train_params = list(model.parameters())
+        if dann_module is not None:
+            train_params += list(discriminator.parameters())
+        optimizer = torch.optim.AdamW(train_params, lr=tcfg["lr"], weight_decay=tcfg["weight_decay"])
 
         # ---- train with validation-based model selection ----
         best_val, best_epoch, bad = -np.inf, -1, 0
@@ -212,11 +280,18 @@ def run_hcan_cib_loso(dataset, model_class, config_path, seed=0, results_dir="re
                 print(f"  [INFO] Latent V-SMOTE enabled with k={smote_k}")
 
         for epoch in range(tcfg["epochs"]):
-            _, train_m = train_epoch(model, train_loader, sd_loss_fn, invariance_gate,
-                                     optimizer, scaler, device, smote_k=smote_k)
+            _, train_m = train_epoch(
+                model, train_loader, sd_loss_fn, invariance_gate,
+                optimizer, scaler, device, smote_k=smote_k,
+                dann_module=dann_module, subj_to_idx=subj_to_idx,
+                epoch=epoch, total_epochs=tcfg["epochs"]
+            )
             val_pred = predict_trials(model, val_loader, device)
             val_auc = pooled_val_auroc(val_pred)
-            print(f"  Epoch {epoch + 1:02d}/{tcfg['epochs']} | Train Acc: {train_m['accuracy']:.4f} "
+            dann_str = ""
+            if "dann_subj_acc" in train_m:
+                dann_str = f" | Subj Acc: {train_m['dann_subj_acc']:.3f} | DANN Loss: {train_m['dann_loss']:.3f}"
+            print(f"  Epoch {epoch + 1:02d}/{tcfg['epochs']} | Train Acc: {train_m['accuracy']:.4f}{dann_str} "
                   f"| Val AUROC (pooled): {val_auc:.4f}")
 
             if np.isfinite(val_auc) and val_auc > best_val + 1e-4:
