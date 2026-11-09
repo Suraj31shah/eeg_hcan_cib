@@ -1,0 +1,44 @@
+dataset:
+  name: "EEGMMIDB"
+  raw_data_path: "E:/kagglehub_cache/datasets/utsavsinghal2604/eeg-motorimagery-eegmmidb-v1-0-0/versions/1/physionet.org/files/eegmmidb/1.0.0"
+  n_subjects: 109
+  n_channels: 64
+  sampling_rate: 160
+  task: "imagery_left_right" # imagery_left_right (2-class) | imagery_3class (rest/left/right) | imagery_4class
+  bandpass:
+    low_freq: 4.0
+    high_freq: 40.0
+  window_sec: 4.0
+  overlap_sec: 0.0
+
+regions:
+  Frontal: [21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37] # 17 channels
+  Central_Sensorimotor: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20] # 21 channels (C3/Cz/C4/FC/CP)
+  Temporal: [38, 39, 40, 41, 42, 43, 44, 45] # 8 channels
+  Parietal: [46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59] # 14 channels
+  Occipital: [60, 61, 62, 63] # 4 channels
+
+model:
+  d_embed: 64
+  n_classes: 2
+  shared_weights: true
+  region_dropout_p: 0.2
+  intra_attn_heads: 4
+
+loss:
+  lambda_0: 0.001
+  tau_gate: 1.0
+  ema_decay: 0.9
+
+training:
+  batch_size: 64
+  lr: 0.0005
+  weight_decay: 0.0001
+  epochs: 30
+  device: "cuda"
+
+paths:
+  checkpoints_dir: "CIB-Net-EEGMMIDB/results/checkpoints"
+  plots_dir: "CIB-Net-EEGMMIDB/results/plots"
+  results_dir: "CIB-Net-EEGMMIDB/results"
+
