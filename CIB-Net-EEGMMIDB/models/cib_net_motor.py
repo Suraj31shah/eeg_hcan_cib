@@ -22,7 +22,7 @@ class CIBNetMotor(nn.Module):
         self.encoder = PerChannelCNNEncoder(n_channels=n_channels, d_embed=d_embed, shared_weights=shared_weights)
         self.fusion = RegionGroupedFusion(d_embed=d_embed, n_classes=n_classes, region_dropout_p=region_dropout_p, regions_dict=regions_dict)
         
-    def forward(self, x):
+    def forward(self, x, y=None, subj_ids=None, smote_k=0, imbalance_method="none"):
         """
         x: [B, 64, T]
         returns:
@@ -30,8 +30,20 @@ class CIBNetMotor(nn.Module):
             group_logits: list of 5 [B, n_classes]
             group_feats: list of 5 [B, d_embed]
             channel_embeddings: [B, 64, d_embed]
+            y: augmented labels (if SMOTE/GAMO applied)
+            subj_ids: augmented subjects (if SMOTE/GAMO applied)
         """
         channel_embeddings = self.encoder(x) # [B, 64, d_embed]
+        
+        # Latent space oversampling if requested
+        if self.training and imbalance_method in ["v_smote", "smote", "gamo"] and y is not None:
+            if imbalance_method == "v_smote":
+                from training.smote import apply_v_smote_latent
+                channel_embeddings, y, subj_ids = apply_v_smote_latent(channel_embeddings, y, subj_ids, k_neighbors=smote_k)
+            elif imbalance_method == "gamo":
+                from training.imbalance import apply_gamo_latent
+                channel_embeddings, y, subj_ids = apply_gamo_latent(channel_embeddings, y, subj_ids)
+                
         final_logits, group_logits, group_feats = self.fusion(channel_embeddings)
-        return final_logits, group_logits, group_feats, channel_embeddings
+        return final_logits, group_logits, group_feats, channel_embeddings, y, subj_ids
 
