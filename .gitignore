@@ -9,6 +9,13 @@ dreamer-dataset/
 *.npy
 *.npz
 
+# Generated plots, PDFs, Word docs, and duplicate figure folders
+*.pdf
+*.png
+*.docx
+figures/
+figures_original/
+
 # Logs and outputs
 *.log
 *.err
@@ -22,11 +29,15 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Checkpoints and models
+# Checkpoints, unpacked weight folders, and pickles
 *.pt
 *.pth
 *.ckpt
 *.onnx
+*.pkl
+best_model_fold_*/
+weights/
+weights_baseline/
 
 # IDE and environments
 .ipynb_checkpoints/
