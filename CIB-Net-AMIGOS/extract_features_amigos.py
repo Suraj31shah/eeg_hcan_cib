@@ -21,7 +21,8 @@ try:
 except Exception:
     pass
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(ROOT_DIR)
 from data.amigos_loader import WindowedAMIGOSDataset, butter_bandpass_filter
 
 
@@ -47,6 +48,10 @@ def extract_de_and_save(
     out_dir: str = "results/features",
     subjects=None,
 ):
+    if not os.path.exists(config_path):
+        alt = os.path.join(ROOT_DIR, config_path)
+        if os.path.exists(alt):
+            config_path = alt
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
 

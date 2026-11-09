@@ -15,7 +15,8 @@ try:
 except Exception:
     pass
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(ROOT_DIR)
 from data.amigos_loader import WindowedAMIGOSDataset
 from eeg_common import resolve_n_val
 from evaluation.metrics import compute_metrics, print_metrics
@@ -234,6 +235,10 @@ def main():
     parser.add_argument("--results_dir", type=str, default=None)
     parser.add_argument("--subjects", nargs="*", type=int, default=None)
     args = parser.parse_args()
+    if not os.path.exists(args.config):
+        alt = os.path.join(ROOT_DIR, args.config)
+        if os.path.exists(alt):
+            args.config = alt
 
     with open(args.config) as f:
         config = yaml.safe_load(f)

@@ -66,6 +66,9 @@ def main():
 
     py = sys.executable
     root = os.path.dirname(os.path.abspath(__file__))
+    args.results_root = os.path.abspath(args.results_root)
+    if args.data_path:
+        args.data_path = os.path.abspath(args.data_path)
     os.chdir(root)
     os.makedirs(args.results_root, exist_ok=True)
 

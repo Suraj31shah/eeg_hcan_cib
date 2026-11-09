@@ -9,10 +9,18 @@ try:
 except Exception:
     pass
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(ROOT_DIR)
 from data.amigos_loader import WindowedAMIGOSDataset
 from models.hcan_cib_net import HCANCIBNet
 from training.loso_evaluator import run_hcan_cib_loso
+
+
+def _resolve_config_path(cfg_path: str) -> str:
+    if os.path.exists(cfg_path):
+        return cfg_path
+    alt = os.path.join(ROOT_DIR, cfg_path)
+    return alt if os.path.exists(alt) else cfg_path
 
 
 def main():
@@ -39,6 +47,7 @@ def main():
     parser.add_argument("--results_dir", type=str, default=None)
     parser.add_argument("--subjects", nargs="*", type=int, default=None)
     args = parser.parse_args()
+    args.config = _resolve_config_path(args.config)
 
     with open(args.config) as f:
         config = yaml.safe_load(f)
