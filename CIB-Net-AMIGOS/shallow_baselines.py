@@ -15,8 +15,15 @@ Variants:
 import argparse
 import json
 import os
+import sys
 import warnings
 import numpy as np
+
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
 from scipy.stats import wilcoxon
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline

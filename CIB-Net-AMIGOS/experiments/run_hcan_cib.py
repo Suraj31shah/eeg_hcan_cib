@@ -3,6 +3,12 @@ import os
 import sys
 import yaml
 
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.amigos_loader import WindowedAMIGOSDataset
 from models.hcan_cib_net import HCANCIBNet

@@ -6,7 +6,14 @@ and paired Wilcoxon vs reference with Holm correction.
 
 import argparse
 import json
+import sys
 import numpy as np
+
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
 from scipy.stats import wilcoxon
 from eeg_common import boot_ci, holm
 

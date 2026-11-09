@@ -9,6 +9,12 @@ import yaml
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.amigos_loader import WindowedAMIGOSDataset
 from eeg_common import resolve_n_val
@@ -25,7 +31,8 @@ from training.subject_sampler import SubjectBalancedSampler
 def predict_trials_baseline(model, dataloader, device):
     model.eval()
     logits, labels = {}, {}
-    for x_eeg, _, y, subj_ids, trial_ids in tqdm(dataloader, desc="Evaluating", leave=False):
+    show_pbar = sys.stderr.isatty()
+    for x_eeg, _, y, subj_ids, trial_ids in tqdm(dataloader, desc="Evaluating", leave=False, disable=not show_pbar):
         x_eeg = x_eeg.to(device)
         final_logits = model(x_eeg).float().cpu().numpy()
         final_logits = np.nan_to_num(final_logits, nan=0.0)
@@ -53,7 +60,8 @@ def train_epoch_baseline(model, dataloader, optimizer, device):
     total_loss, n_batches = 0.0, 0
     all_preds, all_targets = [], []
 
-    for x_eeg, _, y, _, _ in tqdm(dataloader, desc="Training", leave=False):
+    show_pbar = sys.stderr.isatty()
+    for x_eeg, _, y, _, _ in tqdm(dataloader, desc="Training", leave=False, disable=not show_pbar):
         x_eeg, y = x_eeg.to(device), y.to(device)
         optimizer.zero_grad(set_to_none=True)
         final_logits = model(x_eeg)

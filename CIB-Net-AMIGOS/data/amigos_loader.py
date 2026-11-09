@@ -17,11 +17,20 @@ Note on Kaggle Datasets:
   `find_amigos_files()` recursively discovers whichever is mounted.
 """
 
+import gc
 import os
 import re
+import sys
+import time
 import warnings
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
 
 import numpy as np
 import scipy.io as sio
@@ -149,6 +158,15 @@ def find_amigos_files(data_path: Optional[str] = None) -> List[Tuple[int, str]]:
     return [(sid, info[1]) for sid, info in sorted(found.items())]
 
 
+def _wanted_mat_key(name: str) -> bool:
+    nl = str(name).lower()
+    return (
+        nl == "joined_data"
+        or ("label" in nl and "self" in nl)
+        or nl in ("videoids", "video_ids", "video_id")
+    )
+
+
 def _h5_decode(node, root):
     if isinstance(node, h5py.Group):
         return {k: _h5_decode(node[k], root) for k in node.keys() if not k.startswith("#")}
@@ -165,13 +183,31 @@ def _h5_decode(node, root):
 
 def _read_mat_file(path: str) -> Dict[str, object]:
     try:
-        raw = sio.loadmat(path, simplify_cells=False, verify_compressed_data_integrity=False)
+        wanted = None
+        try:
+            meta = sio.whosmat(path)
+            sel = [n for n, _, _ in meta if _wanted_mat_key(n)]
+            if sel:
+                wanted = sel
+        except (NotImplementedError, ValueError, OSError):
+            raise
+        except Exception:
+            wanted = None
+
+        raw = sio.loadmat(
+            path,
+            variable_names=wanted,
+            simplify_cells=False,
+            verify_compressed_data_integrity=False,
+        )
         return {k: v for k, v in raw.items() if not k.startswith("__")}
     except (NotImplementedError, ValueError, OSError):
         if h5py is None:
             raise
         with h5py.File(path, "r") as f:
-            return {k: _h5_decode(f[k], f) for k in f.keys() if not k.startswith("#")}
+            keys = [k for k in f.keys() if not k.startswith("#")]
+            wanted_h5 = [k for k in keys if _wanted_mat_key(k)] or keys
+            return {k: _h5_decode(f[k], f) for k in wanted_h5}
 
 
 def _unwrap_cells(var) -> List[Optional[np.ndarray]]:
@@ -342,6 +378,10 @@ class WindowedAMIGOSDataset(Dataset):
         return np.nan_to_num(np.asarray(feats, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
 
     def _load_and_process(self) -> None:
+        print(
+            f"[AMIGOS] Scanning for Data_Preprocessed_P*.mat (data_path='{self.data_path or 'auto'}')...",
+            flush=True,
+        )
         files = find_amigos_files(self.data_path)
         if self.subjects_filter is not None:
             files = [(sid, p) for sid, p in files if sid in self.subjects_filter]
@@ -358,17 +398,20 @@ class WindowedAMIGOSDataset(Dataset):
         print(
             f"[AMIGOS] Found {len(files)} participant .mat files | target={self.target} "
             f"(col={self.target_col}) | binarize={self.binarize} | video_subset={self.video_subset} "
-            f"| normalize={transductive_tag}"
+            f"| normalize={transductive_tag}",
+            flush=True,
         )
 
         global_trial_id = 0
 
-        for subject_id, fpath in files:
+        for subj_idx, (subject_id, fpath) in enumerate(files, 1):
+            t0_subj = time.time()
             mat = _read_mat_file(fpath)
             joined_key = next((k for k in mat if k.lower() == "joined_data"), None)
             label_key = next((k for k in mat if "label" in k.lower() and "self" in k.lower()), None)
             if joined_key is None or label_key is None:
                 warnings.warn(f"Skipping subject P{subject_id:02d} ({fpath}): missing joined_data or labels_selfassessment.")
+                del mat
                 continue
 
             trial_cells = _unwrap_cells(mat[joined_key])
@@ -376,6 +419,7 @@ class WindowedAMIGOSDataset(Dataset):
 
             vid_key = next((k for k in mat if k.lower() in ("videoids", "video_ids", "video_id")), None)
             vid_cells = _unwrap_cells(mat[vid_key]) if vid_key is not None else []
+            del mat
 
             subj_eegs: List[np.ndarray] = []
             subj_periphs: List[np.ndarray] = []
@@ -454,8 +498,11 @@ class WindowedAMIGOSDataset(Dataset):
                 subj_scores.append(raw_score)
                 subj_vids.append(vid_id)
 
+            del trial_cells, label_rows, vid_cells
+
             if not subj_eegs:
                 warnings.warn(f"Subject P{subject_id:02d} yielded 0 valid trials; skipping subject.")
+                gc.collect()
                 continue
 
             self.stats["subjects_loaded"] += 1
@@ -479,6 +526,7 @@ class WindowedAMIGOSDataset(Dataset):
                 subj_eegs = [(e - eeg_mu) / (eeg_sd + 1e-8) for e in subj_eegs]
                 subj_periphs = [(p - per_mu) / (per_sd + 1e-8) for p in subj_periphs]
 
+            n_subj_wins = 0
             for eeg_tr, per_tr, lbl, vid_id in zip(subj_eegs, subj_periphs, bin_labels, subj_vids):
                 n_samples = eeg_tr.shape[1]
                 for start in range(0, n_samples - self.window_samples + 1, self.step_samples):
@@ -493,8 +541,18 @@ class WindowedAMIGOSDataset(Dataset):
                     self.subject_ids.append(int(subject_id))
                     self.trial_ids.append(int(global_trial_id))
                     self.video_ids.append(int(vid_id))
+                    n_subj_wins += 1
 
                 global_trial_id += 1
+
+            print(
+                f"  [AMIGOS] P{subject_id:02d} ({subj_idx}/{len(files)}): "
+                f"{len(subj_eegs)} trials, {n_subj_wins} windows "
+                f"({time.time() - t0_subj:.1f}s | total={len(self.windows)})",
+                flush=True,
+            )
+            del subj_eegs, subj_periphs
+            gc.collect()
 
         if not self.windows:
             raise RuntimeError("No valid AMIGOS windows produced. Inspect dataset files and config parameters.")
@@ -512,7 +570,8 @@ class WindowedAMIGOSDataset(Dataset):
             f"| windows={len(self.windows)} | pos_rate={pos_rate:.3f} "
             f"| skipped(empty={self.stats['skipped_empty']}, long={self.stats['skipped_long']}, "
             f"short={self.stats['skipped_short']}, bad_label={self.stats['skipped_invalid_label']}) "
-            f"| nan_repaired={self.stats['nan_values_repaired']}"
+            f"| nan_repaired={self.stats['nan_values_repaired']}",
+            flush=True,
         )
 
     def __len__(self) -> int:

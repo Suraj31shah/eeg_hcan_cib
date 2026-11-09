@@ -13,12 +13,19 @@ Replicates the validation-subject LOSO protocol of loso_evaluator_fixed.py:
 
 import json
 import os
+import sys
 import numpy as np
 import torch
 import yaml
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
+
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
 
 from eeg_common import resolve_n_val
 from evaluation.metrics import compute_metrics, print_metrics
@@ -73,7 +80,8 @@ def train_epoch(
     total_loss, n_batches = 0.0, 0
     all_preds, all_targets = [], []
 
-    for x_eeg, x_periph, y, subj_ids, _ in tqdm(dataloader, desc="Training", leave=False):
+    show_pbar = sys.stderr.isatty()
+    for x_eeg, x_periph, y, subj_ids, _ in tqdm(dataloader, desc="Training", leave=False, disable=not show_pbar):
         x_eeg, x_periph, y = x_eeg.to(device), x_periph.to(device), y.to(device)
         subj_ids = subj_ids.to(device)
 
@@ -113,7 +121,8 @@ def predict_trials(model, dataloader, device):
     model.eval()
     logits, labels = {}, {}
 
-    for x_eeg, x_periph, y, subj_ids, trial_ids in tqdm(dataloader, desc="Evaluating", leave=False):
+    show_pbar = sys.stderr.isatty()
+    for x_eeg, x_periph, y, subj_ids, trial_ids in tqdm(dataloader, desc="Evaluating", leave=False, disable=not show_pbar):
         x_eeg, x_periph = x_eeg.to(device), x_periph.to(device)
         final_logits, _, _, _, _, _ = model(x_eeg, x_periph)
         final_logits = np.nan_to_num(final_logits.float().cpu().numpy(), nan=0.0)

@@ -11,6 +11,12 @@ import os
 import sys
 import numpy as np
 
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from compare_models import compare
 from eeg_common import boot_ci

@@ -25,10 +25,20 @@ import os
 import subprocess
 import sys
 
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
 
 def _run(cmd):
+    if cmd and cmd[0] == sys.executable and (len(cmd) < 2 or cmd[1] != "-u"):
+        cmd = [cmd[0], "-u", *cmd[1:]]
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
     print("\n>>> RUNNING:", " ".join(cmd), flush=True)
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, env=env, check=True)
 
 
 def main():
