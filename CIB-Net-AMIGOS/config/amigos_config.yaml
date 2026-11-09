@@ -1,0 +1,56 @@
+dataset: "AMIGOS"
+# Leave blank or set to a Kaggle/local path; loader auto-discovers Data_Preprocessed_P*.mat recursively
+data_path: "/kaggle/input/datasets/nsut123/amigos-dataset/AMIGOS DATASET/AMIGOS DATASET/PREPROCESSED DATA"
+
+# Prediction target & binarization
+target: "valence"             # 'valence' | 'arousal' | 'dominance'
+binarize: "fixed"             # 'fixed' (>5.0 on 1-9 scale) | 'median' (per-subject median split)
+threshold: 5.0                # Fixed threshold when binarize == 'fixed'
+video_subset: "short"         # 'short' (16 short clips <=240s, standard) | 'all' (short + 4 long clips)
+max_short_duration_sec: 240.0 # Threshold separating short (~51-150s) vs long (~14-24m) AMIGOS trials
+
+# Electrode & peripheral layout (Emotiv EPOC 14 EEG + 2 ECG + 1 GSR = 17 joined_data columns)
+n_channels: 14                # AF3, F7, F3, FC5, T7, P7, O1, O2, P8, T8, FC6, F4, F8, AF4
+n_periph_channels: 3          # ECG_R, ECG_L, GSR (cols 14, 15, 16)
+n_periph_features: 18         # 6 stats (mean, std, min, max, ptp, median) x 3 channels
+n_classes: 2
+n_regions: 4                  # frontal, temporal, parietal, occipital
+max_subjects: 64              # Safe upper bound above AMIGOS P40 (avoids P32 hardcoding bug)
+
+# Signal preprocessing & windowing
+sample_rate: 128
+baseline_sec: 5               # AMIGOS preprocessed joined_data starts with 5s fixation baseline
+window_sec: 4.0
+overlap_sec: 2.0
+bandpass_low: 4.0
+bandpass_high: 45.0
+normalize: "none"             # 'none' (strict non-transductive) | 'zscore' (transductive per-subject)
+
+# HCAN-CIB hyperparameters (matched cleanly to DEAP / DREAMER benchmark suite)
+d_embed: 64
+lambda_sd: 0.001              # Spectral decoupling strength
+alpha_modality: 0.3           # Auxiliary loss weight for z_eeg / z_periph
+beta_region: 0.2              # Auxiliary loss weight for region logits z_r
+region_dropout_p: 0.2
+tau_gate: 1.0
+decay_gate: 0.9
+
+training:
+  optimizer: "AdamW"
+  lr: 0.001
+  weight_decay: 0.01
+  epochs: 40
+  min_epochs: 10
+  patience: 8
+  batch_size: 64
+  n_val_subjects: 4
+
+loso:
+  save_per_fold: true
+
+imbalance:
+  method: "none"              # none | class_weight | logit_adj | smote | v_smote | deepsmote | gamo
+  smote_k: 5
+  oversample_in: "embedding"
+  logit_adj_tau: 1.0
+

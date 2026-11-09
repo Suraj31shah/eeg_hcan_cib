@@ -1,0 +1,74 @@
+{
+  "n_trials": 1280,
+  "n_subjects": 32,
+  "n_features": 128,
+  "D0_label_priors": {
+    "pos_rate_mean": 0.49765625,
+    "pos_rate_min": 0.45,
+    "pos_rate_max": 0.5,
+    "trivial_acc_mean": 0.50234375,
+    "n_subjects_majority_ge_0.7": 0,
+    "n_subjects": 32
+  },
+  "D1": {
+    "within_blocked": {
+      "mean_auroc": 0.5185076030511886,
+      "ci95": [
+        0.4706946920153129,
+        0.5621567080580239
+      ],
+      "p_greater_than_0.5": 0.19484766173886514
+    },
+    "within_shuffled": {
+      "mean_auroc": 0.5303513419755196,
+      "ci95": [
+        0.48818755567501454,
+        0.5697321346492811
+      ],
+      "p_greater_than_0.5": 0.05598002407604972
+    },
+    "loso_raw": {
+      "mean_auroc": 0.521707435017468,
+      "ci95": [
+        0.4863630864863389,
+        0.5570562513943477
+      ],
+      "p_greater_than_0.5": 0.11208567031524314
+    },
+    "loso_zscore": {
+      "mean_auroc": 0.5622424372958912,
+      "ci95": [
+        0.5292082720710394,
+        0.593768129337311
+      ],
+      "p_greater_than_0.5": 0.0006283072233819116
+    }
+  },
+  "D2": {
+    "chance": 0.03125,
+    "none": 0.978125,
+    "center": 0.03125,
+    "zscore": 0.03125
+  },
+  "D3": {
+    "eta2_subject_mean": 0.47753040713326655,
+    "eta2_subject_median": 0.4809232236300267,
+    "eta2_label_within_subject_mean": 0.001365836290255172,
+    "ratio_subject_to_label": 349.62492250374464
+  },
+  "D4": {
+    "none": {
+      "mean_auroc": 0.5170832680659982
+    },
+    "center": {
+      "mean_auroc": 0.5319388729873927,
+      "paired_diff_vs_none": 0.014855604921394394,
+      "paired_p": 0.0641240458653917
+    },
+    "zscore": {
+      "mean_auroc": 0.5581152395667198,
+      "paired_diff_vs_none": 0.04103197150072151,
+      "paired_p": 0.014298791602314306
+    }
+  }
+}

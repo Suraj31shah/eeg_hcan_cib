@@ -206,10 +206,10 @@ def run_hcan_cib_loso(dataset, model_class, config_path, seed=0, results_dir="re
         best_val, best_epoch, bad = -np.inf, -1, 0
         best_ckpt = None
         smote_k = 0
-        if config.get("imbalance", {}).get("method") in ["v_smote", "smote"]:
+        if config.get("imbalance", {}).get("method") in ["v_smote", "smote", "deepsmote"]:
             smote_k = config.get("imbalance", {}).get("smote_k", 5)
             if fold == 0:
-                print(f"  [INFO] Latent V-SMOTE enabled with k={smote_k}")
+                print(f"  [INFO] Latent {config.get('imbalance', {}).get('method')} enabled with k={smote_k}")
 
         for epoch in range(tcfg["epochs"]):
             _, train_m = train_epoch(model, train_loader, sd_loss_fn, invariance_gate,
@@ -289,17 +289,31 @@ def run_hcan_cib_loso(dataset, model_class, config_path, seed=0, results_dir="re
     # ---- plots (best-epoch model of the last fold) ----
     try:
         from evaluation.plots import plot_region_gate_heatmap, plot_tsne
+        imb_method = config.get("imbalance", {}).get("method", "base")
+        if not imb_method or imb_method == "none":
+            imb_method = "base"
+        ds_name = config.get("dataset", "deap").lower()
+
         plot_region_gate_heatmap(fold_metrics, save_path=f"{results_dir}/plots/gate_heatmap.png")
+        plot_region_gate_heatmap(fold_metrics, save_path=f"{results_dir}/plots/gate_heatmap_{ds_name}_{imb_method}.png")
+
         model.eval()
         embeds, labels = [], []
         with torch.no_grad():
             for x_eeg, x_periph, y, _, _ in test_loader:
-                _, _, z_eeg, _ = model(x_eeg.to(device), x_periph.to(device))
+                out = model(x_eeg.to(device), x_periph.to(device))
+                z_eeg = out[2]  # index 2 is z_eeg across all model versions
                 embeds.append(z_eeg.float().cpu().numpy())
                 labels.append(y.numpy())
-        plot_tsne(np.concatenate(embeds), np.concatenate(labels),
-                  save_path=f"{results_dir}/plots/tsne_brain_embeddings.png")
+
+        all_embeds = np.concatenate(embeds)
+        all_labels = np.concatenate(labels)
+        plot_tsne(all_embeds, all_labels, save_path=f"{results_dir}/plots/tsne_brain_embeddings.png")
+        plot_tsne(all_embeds, all_labels, save_path=f"{results_dir}/plots/tsne_brain_embeddings_{ds_name}_{imb_method}.png")
+        print(f"Plots saved successfully to '{results_dir}/plots/'")
     except Exception as e:  # plotting must never kill a finished run
-        print(f"Plotting skipped: {e}")
+        import traceback
+        print(f"Plotting skipped due to error: {e}")
+        traceback.print_exc()
 
     return fold_metrics

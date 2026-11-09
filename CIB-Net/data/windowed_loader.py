@@ -18,10 +18,11 @@ def butter_bandpass_filter(data, lowcut, highcut, fs, order=4):
     return y
 
 class WindowedDEAPDataset(Dataset):
-    def __init__(self, data_path, target='valence', binarize='median', window_sec=4.0, overlap_sec=2.0, fs=128, baseline_sec=3.0):
+    def __init__(self, data_path, target='valence', binarize='median', window_sec=4.0, overlap_sec=2.0, fs=128, baseline_sec=3.0, subjects=None):
         """
         Loads DEAP dataset with overlapping windows and peripheral features.
         binarize: 'median' (Task P, balanced) or 'fixed' (Task F, fixed threshold 5, imbalanced)
+        subjects: list or range of specific subject IDs to load (default: None = all 1..32)
         """
         self.data_path = data_path
         self.target = target
@@ -30,6 +31,7 @@ class WindowedDEAPDataset(Dataset):
         self.overlap_sec = overlap_sec
         self.fs = fs
         self.baseline_sec = baseline_sec
+        self.subjects = subjects
         
         self.window_samples = int(self.window_sec * self.fs)
         self.step_samples = int((self.window_sec - self.overlap_sec) * self.fs)
@@ -62,7 +64,8 @@ class WindowedDEAPDataset(Dataset):
         raw_content = {}
         
         # First pass: load everything and compute labels based on median if needed
-        for subject_id in range(1, 33):
+        target_subjs = self.subjects if self.subjects is not None else range(1, 33)
+        for subject_id in target_subjs:
             file_name = f's{subject_id:02d}.dat'
             file_path = os.path.join(self.data_path, file_name)
             

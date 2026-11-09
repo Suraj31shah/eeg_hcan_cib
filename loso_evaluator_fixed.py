@@ -275,12 +275,15 @@ def run_hcan_cib_loso(dataset, model_class, config_path, seed=0, results_dir="re
         embeds, labels = [], []
         with torch.no_grad():
             for x_eeg, x_periph, y, _, _ in test_loader:
-                _, _, z_eeg, _ = model(x_eeg.to(device), x_periph.to(device))
+                out = model(x_eeg.to(device), x_periph.to(device))
+                z_eeg = out[2]  # index 2 is z_eeg across all model versions
                 embeds.append(z_eeg.float().cpu().numpy())
                 labels.append(y.numpy())
         plot_tsne(np.concatenate(embeds), np.concatenate(labels),
                   save_path=f"{results_dir}/plots/tsne_brain_embeddings.png")
     except Exception as e:  # plotting must never kill a finished run
+        import traceback
         print(f"Plotting skipped: {e}")
+        traceback.print_exc()
 
     return fold_metrics
