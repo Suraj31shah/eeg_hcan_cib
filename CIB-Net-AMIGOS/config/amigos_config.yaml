@@ -1,6 +1,6 @@
 dataset: "AMIGOS"
 # Leave blank or set to a Kaggle/local path; loader auto-discovers Data_Preprocessed_P*.mat recursively
-data_path: "/kaggle/input/datasets/nsut123/amigos-dataset/AMIGOS DATASET/AMIGOS DATASET/PREPROCESSED DATA"
+data_path: "/kaggle/input/datasets/nsut123/amigos/ AMIGOS =+"
 
 # Prediction target & binarization
 target: "valence"             # 'valence' | 'arousal' | 'dominance'
