@@ -2,11 +2,12 @@ import argparse
 import json
 import os
 import sys
+import warnings
 import numpy as np
 import torch
 import torch.nn as nn
 import yaml
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 try:
@@ -24,7 +25,13 @@ from evaluation.plots import plot_roc_pr_curves
 from models.baselines.acrnn import ACRNN
 from models.baselines.eegnet import EEGNet
 from models.baselines.plain_cnn import PlainCNN
-from training.loso_evaluator import pooled_val_auroc, to_py, tune_threshold
+from training.loso_evaluator import (
+    FoldNormalizedDataset,
+    fit_fold_stats,
+    pooled_val_auroc,
+    to_py,
+    tune_threshold,
+)
 from training.subject_sampler import SubjectBalancedSampler
 
 
@@ -32,15 +39,24 @@ from training.subject_sampler import SubjectBalancedSampler
 def predict_trials_baseline(model, dataloader, device):
     model.eval()
     logits, labels = {}, {}
+    n_nonfinite = 0
     show_pbar = sys.stderr.isatty()
     for x_eeg, _, y, subj_ids, trial_ids in tqdm(dataloader, desc="Evaluating", leave=False, disable=not show_pbar):
         x_eeg = x_eeg.to(device)
-        final_logits = model(x_eeg).float().cpu().numpy()
-        final_logits = np.nan_to_num(final_logits, nan=0.0)
+        logits_np = model(x_eeg).float().cpu().numpy()
+        bad_mask = ~np.isfinite(logits_np)
+        if bad_mask.any():
+            n_nonfinite += int(bad_mask.sum())
+            logits_np = np.nan_to_num(logits_np, nan=0.0, posinf=0.0, neginf=0.0)
         for i in range(len(y)):
             key = (int(subj_ids[i]), int(trial_ids[i]))
-            logits.setdefault(key, []).append(final_logits[i])
+            logits.setdefault(key, []).append(logits_np[i])
             labels[key] = int(y[i])
+
+    if n_nonfinite > 0:
+        msg = f"[predict_trials_baseline] Masked {n_nonfinite} non-finite logit entries to 0.0!"
+        print(f"  [WARNING] {msg}", flush=True)
+        warnings.warn(msg)
 
     keys = sorted(logits.keys())
     mean_logits = np.stack([np.mean(logits[k], axis=0) for k in keys])
@@ -52,13 +68,14 @@ def predict_trials_baseline(model, dataloader, device):
         "y": np.array([labels[k] for k in keys]),
         "prob1": probs[:, 1],
         "pred": mean_logits.argmax(axis=1),
+        "n_nonfinite": int(n_nonfinite),
     }
 
 
 def train_epoch_baseline(model, dataloader, optimizer, device):
     model.train()
     criterion = nn.CrossEntropyLoss()
-    total_loss, n_batches = 0.0, 0
+    total_loss, n_batches, n_nonfinite = 0.0, 0, 0
     all_preds, all_targets = [], []
 
     show_pbar = sys.stderr.isatty()
@@ -67,6 +84,10 @@ def train_epoch_baseline(model, dataloader, optimizer, device):
         optimizer.zero_grad(set_to_none=True)
         final_logits = model(x_eeg)
         loss = criterion(final_logits, y)
+        if not torch.isfinite(loss):
+            n_nonfinite += 1
+            optimizer.zero_grad(set_to_none=True)
+            continue
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
@@ -76,7 +97,15 @@ def train_epoch_baseline(model, dataloader, optimizer, device):
         all_preds.extend(torch.argmax(final_logits.detach(), dim=1).cpu().numpy())
         all_targets.extend(y.cpu().numpy())
 
-    return total_loss / max(n_batches, 1), compute_metrics(all_targets, all_preds)
+    if n_nonfinite > 0:
+        msg = f"[train_epoch_baseline] Skipped {n_nonfinite} non-finite batch(es)!"
+        print(f"  [WARNING] {msg}", flush=True)
+        warnings.warn(msg)
+
+    avg_loss = total_loss / n_batches if n_batches > 0 else float("nan")
+    metrics = compute_metrics(all_targets, all_preds) if all_targets else {"accuracy": float("nan")}
+    metrics["nonfinite_batches"] = int(n_nonfinite)
+    return avg_loss, metrics
 
 
 def _build_baseline(model_key: str, config: dict):
@@ -109,10 +138,11 @@ def run_baseline_loso(
     patience = int(tcfg.get("patience", 8))
     min_epochs = int(tcfg.get("min_epochs", 10))
     bs = int(tcfg["batch_size"])
+    clip_std = float(tcfg.get("clip_std", 50.0))
 
     print(
         f"--- Baseline {model_key.upper()} LOSO on {device} | seed={seed} | n_subjects={len(subjects)} "
-        f"| n_val={n_val} | normalize={config.get('normalize', 'none')} ---"
+        f"| n_val={n_val} | normalize={config.get('normalize', 'none')} | fold_scaler=fit_only ---"
     )
 
     os.makedirs(f"{results_dir}/weights_baseline", exist_ok=True)
@@ -136,13 +166,28 @@ def run_baseline_loso(
             f"| val={sorted(map(int, val_subjects))}"
         )
 
+        # Fit standardization STRICTLY on training fold (`fit_idx`), never validation or test
+        fold_stats = fit_fold_stats(dataset, fit_idx)
+        fit_ds = FoldNormalizedDataset(dataset, fit_idx, *fold_stats, clip_val=clip_std)
+        val_ds = FoldNormalizedDataset(dataset, val_idx, *fold_stats, clip_val=clip_std)
+        test_ds = FoldNormalizedDataset(dataset, test_idx, *fold_stats, clip_val=clip_std)
+
         eff_bs = min(bs, max(8, len(fit_idx)))
-        train_sampler = SubjectBalancedSampler(dataset, fit_idx, eff_bs)
+        train_sampler = SubjectBalancedSampler(fit_ds, np.arange(len(fit_idx)), eff_bs)
         train_loader = DataLoader(
-            dataset, batch_size=eff_bs, sampler=train_sampler, drop_last=len(fit_idx) >= eff_bs, num_workers=0
+            fit_ds,
+            batch_size=eff_bs,
+            sampler=train_sampler,
+            drop_last=len(fit_idx) >= eff_bs,
+            num_workers=0,
+            pin_memory=(device == "cuda"),
         )
-        val_loader = DataLoader(Subset(dataset, val_idx), batch_size=eff_bs, shuffle=False, num_workers=0)
-        test_loader = DataLoader(Subset(dataset, test_idx), batch_size=eff_bs, shuffle=False, num_workers=0)
+        val_loader = DataLoader(
+            val_ds, batch_size=eff_bs, shuffle=False, num_workers=0, pin_memory=(device == "cuda")
+        )
+        test_loader = DataLoader(
+            test_ds, batch_size=eff_bs, shuffle=False, num_workers=0, pin_memory=(device == "cuda")
+        )
 
         torch.manual_seed(seed * 1000 + fold)
         model = _build_baseline(model_key, config).to(device)
@@ -152,14 +197,16 @@ def run_baseline_loso(
 
         best_val, best_epoch, bad = -np.inf, -1, 0
         best_ckpt = None
+        last_epoch = 0
 
         for epoch in range(int(tcfg["epochs"])):
-            _, train_m = train_epoch_baseline(model, train_loader, optimizer, device)
+            last_epoch = epoch + 1
+            train_loss, train_m = train_epoch_baseline(model, train_loader, optimizer, device)
             val_pred = predict_trials_baseline(model, val_loader, device)
             val_auc = pooled_val_auroc(val_pred)
             print(
-                f"  Epoch {epoch + 1:02d}/{tcfg['epochs']} | Train Acc: {train_m['accuracy']:.4f} "
-                f"| Val AUROC: {val_auc:.4f}"
+                f"  Epoch {epoch + 1:02d}/{tcfg['epochs']} | Loss: {train_loss:.4f} "
+                f"| Train Acc: {train_m['accuracy']:.4f} | Val AUROC: {val_auc:.4f}"
             )
 
             if np.isfinite(val_auc) and val_auc > best_val + 1e-4:
@@ -173,7 +220,7 @@ def run_baseline_loso(
 
         if best_ckpt is None:
             best_ckpt = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
-            best_epoch = int(tcfg["epochs"])
+            best_epoch = last_epoch
 
         model.load_state_dict(best_ckpt)
         torch.save(best_ckpt, f"{results_dir}/weights_baseline/best_model_fold_{fold + 1}.pth")
@@ -194,7 +241,7 @@ def run_baseline_loso(
 
         print_metrics(m, fold_name=f"Test P{int(test_subject):02d} (epoch {best_epoch})")
         fold_metrics.append(m)
-        fold_preds.append(te)
+        fold_preds.append({k: v for k, v in te.items() if k != "n_nonfinite"})
 
     print(f"\n=== FINAL {model_key.upper()} BASELINE RESULTS (AMIGOS) ===")
     for key in ["accuracy", "balanced_acc", "auroc", "macro_f1", "delta_trivial"]:

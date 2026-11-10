@@ -53,6 +53,8 @@ class InvarianceGate(nn.Module):
 
                 for k, z_k in enumerate(group_logits):
                     s_loss = ce(z_k[mask].float(), y[mask]).mean()
+                    if not torch.isfinite(s_loss):
+                        continue
                     if self.ema_losses[s_idx, k] == 0:
                         self.ema_losses[s_idx, k] = s_loss
                     else:

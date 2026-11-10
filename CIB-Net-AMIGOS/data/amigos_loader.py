@@ -520,11 +520,13 @@ class WindowedAMIGOSDataset(Dataset):
                 eeg_cat = np.concatenate(subj_eegs, axis=1)
                 per_cat = np.concatenate(subj_periphs, axis=1)
                 eeg_mu = np.mean(eeg_cat, axis=1, keepdims=True)
-                eeg_sd = np.std(eeg_cat, axis=1, keepdims=True)
+                eeg_sd_raw = np.std(eeg_cat, axis=1, keepdims=True)
                 per_mu = np.mean(per_cat, axis=1, keepdims=True)
-                per_sd = np.std(per_cat, axis=1, keepdims=True)
-                subj_eegs = [(e - eeg_mu) / (eeg_sd + 1e-8) for e in subj_eegs]
-                subj_periphs = [(p - per_mu) / (per_sd + 1e-8) for p in subj_periphs]
+                per_sd_raw = np.std(per_cat, axis=1, keepdims=True)
+                eeg_sd = np.where(np.isfinite(eeg_sd_raw) & (eeg_sd_raw > 1e-6), eeg_sd_raw, 1.0)
+                per_sd = np.where(np.isfinite(per_sd_raw) & (per_sd_raw > 1e-6), per_sd_raw, 1.0)
+                subj_eegs = [(e - eeg_mu) / eeg_sd for e in subj_eegs]
+                subj_periphs = [(p - per_mu) / per_sd for p in subj_periphs]
 
             n_subj_wins = 0
             for eeg_tr, per_tr, lbl, vid_id in zip(subj_eegs, subj_periphs, bin_labels, subj_vids):
@@ -565,9 +567,17 @@ class WindowedAMIGOSDataset(Dataset):
         self.video_ids = np.asarray(self.video_ids, dtype=np.int64)
 
         pos_rate = float(self.labels.mean())
+        eeg_sample = self.windows[:: max(1, len(self.windows) // 4096)]
+        eeg_min, eeg_max = float(np.nanmin(eeg_sample)), float(np.nanmax(eeg_sample))
+        eeg_std = float(np.nanstd(eeg_sample))
+        ecg_means = self.peripheral[:, [0, 6]] if self.peripheral.shape[1] >= 18 else self.peripheral
+        gsr_means = self.peripheral[:, 12] if self.peripheral.shape[1] >= 13 else self.peripheral[:, -1]
         print(
             f"[AMIGOS Ready] subjects={self.stats['subjects_loaded']} | trials={self.stats['trials_loaded']} "
             f"| windows={len(self.windows)} | pos_rate={pos_rate:.3f} "
+            f"| eeg(min={eeg_min:.2f}, max={eeg_max:.2f}, std={eeg_std:.2f}) "
+            f"| periph_mean(ecg={float(np.nanmean(np.abs(ecg_means))):.2e}, gsr={float(np.nanmean(np.abs(gsr_means))):.2e}, "
+            f"max={float(np.nanmax(np.abs(self.peripheral))):.2e}) "
             f"| skipped(empty={self.stats['skipped_empty']}, long={self.stats['skipped_long']}, "
             f"short={self.stats['skipped_short']}, bad_label={self.stats['skipped_invalid_label']}) "
             f"| nan_repaired={self.stats['nan_values_repaired']}",
