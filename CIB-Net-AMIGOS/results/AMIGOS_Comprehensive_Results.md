@@ -10,6 +10,7 @@ To understand the results, it is important to define the different pipelines tes
 *   **Baselines (ACRNN, PlainCNN, EEGNet):** Standard neural network architectures that operate strictly on 14-channel raw EEG signals without regional invariance gates, modality fusion, or latent balancing mechanisms.
 *   **HCAN-CIB (Phase 1-3 Base):** Our proposed Hierarchical Cross-Attention Network. It integrates 14 EEG channels and 3 peripheral modalities (ECG, GSR - 18 extracted features), utilizing Spectral Decoupling (SD) and Stage B Regional Invariance Gates across 4 cortical lobes (Frontal, Temporal, Parietal, Occipital). In this base phase, no synthetic oversampling is applied (`imbalance: "none"`).
 *   **HCAN-CIB (V-SMOTE):** The full HCAN-CIB architecture with **Variational Latent SMOTE** enabled during training. This phase mathematically upsamples underrepresented affective states directly within the Conditional Information Bottleneck latent space ($Z$) to cure **Class Imbalance**.
+*   **HCAN-CIB (GAMO):** Generative Adversarial Minority Oversampling directly within the joint latent space (`channel_embeddings` and `x_periph`). It employs a lightweight generator MLP and discriminator MLP with residual feature perturbation to generate non-linear synthetic minority representations.
 
 ---
 
@@ -22,6 +23,7 @@ To understand the results, it is important to define the different pipelines tes
 | **EEGNet (Baseline)** | `0.5422 ± 0.1205` | `0.5178 ± 0.1084` | `0.5920 ± 0.1644` | `0.1839 ± 0.3287` | `0.6299 ± 0.1705` | `0.4292 ± 0.1314` | `0.0758 ± 0.1616` | `-0.0391 ± 0.1820` | `0.3571 ± 0.3849` | `0.1592 ± 0.1221` | `0.3484 ± 0.3692` |
 | **HCAN-CIB (Phase 1-3 Base)** | `0.5062 ± 0.1464` | `0.5040 ± 0.1378` | `0.5413 ± 0.1512` | `0.0825 ± 0.3023` | `0.5877 ± 0.1585` | `0.4213 ± 0.1527` | `0.0468 ± 0.2662` | `-0.0750 ± 0.2050` | `0.4148 ± 0.3889` | `0.2028 ± 0.1065` | `0.4219 ± 0.3614` |
 | **HCAN-CIB (V-SMOTE)** | `0.4828 ± 0.1369` | `0.4900 ± 0.1311` | `0.5190 ± 0.1498` | `0.0380 ± 0.2996` | `0.5695 ± 0.1366` | `0.4168 ± 0.1413` | `0.0023 ± 0.2320` | `-0.0984 ± 0.1941` | `0.5124 ± 0.3531` | `0.2183 ± 0.1103` | `0.5328 ± 0.3304` |
+| **HCAN-CIB (GAMO)** | `0.5031 ± 0.1333` | `0.5066 ± 0.1156` | `0.5074 ± 0.1376` | `0.0147 ± 0.2752` | `0.5752 ± 0.1367` | `0.4068 ± 0.1367` | `0.0460 ± 0.1919` | `-0.0781 ± 0.1980` | `0.4293 ± 0.4060` | `0.2031 ± 0.1206` | `0.4313 ± 0.3893` |
 
 *(Note: AUROC and Gini AUROC are computed across the 39 valid subjects where both classes exist; Subject 11 is an extreme single-class test subject where AUROC is mathematically undefined).*
 
@@ -31,12 +33,12 @@ To understand the results, it is important to define the different pipelines tes
 
 In HCAN-CIB, the Stage B gating module automatically learns to scale brain region representations based on cross-subject loss variance. The weights across all 40 subjects demonstrate strong neuroanatomical consistency:
 
-| Cortical Region | Channels (Emotiv Epoc 14) | Base Gating Weight | V-SMOTE Gating Weight | Diagnostic Interpretation |
-| :--- | :--- | :---: | :---: | :--- |
-| **Occipital** | `O1, O2` | `1.227 ± 0.147` | **`1.309 ± 0.328`** | **Heavily Prioritized:** Highest cross-subject stability. Directly processes visual film stimuli. |
-| **Parietal** | `P7, P8` | `1.035 ± 0.195` | **`1.183 ± 0.419`** | **Reinforced:** Multi-sensory association networks stabilize once latent classes are balanced. |
-| **Frontal** | `AF3, F7, F3, FC5, FC6, F4, F8, AF4` | `1.151 ± 0.227` | `0.927 ± 0.275` | **Active:** Sustained emotional engagement and valence asymmetry. |
-| **Temporal** | `T7, T8` | **`0.587 ± 0.199`** | **`0.581 ± 0.316`** | **Systematically Suppressed:** High inter-subject impedance variance and jaw/muscle artifacts consistently filtered out. |
+| Cortical Region | Channels (Emotiv Epoc 14) | Base Gate | V-SMOTE Gate | GAMO Gate | Diagnostic Interpretation |
+| :--- | :--- | :---: | :---: | :---: | :--- |
+| **Parietal** | `P7, P8` | `1.035 ± 0.195` | `1.183 ± 0.419` | **`1.278 ± 0.274`** | **Maximal Association:** Sensory integration is reinforced with generative minority sampling. |
+| **Occipital** | `O1, O2` | `1.227 ± 0.147` | **`1.309 ± 0.328`** | `1.206 ± 0.279` | **Heavily Prioritized:** Highest cross-subject stability. Directly processes visual film stimuli. |
+| **Frontal** | `AF3, F7, F3, FC5, FC6, F4, F8, AF4` | `1.151 ± 0.227` | `0.927 ± 0.275` | `1.106 ± 0.325` | **Active:** Sustained emotional engagement and valence asymmetry. |
+| **Temporal** | `T7, T8` | **`0.587 ± 0.199`** | **`0.581 ± 0.316`** | **`0.410 ± 0.199`** | **Extreme Suppression:** Deepest noise attenuation under adversarial training. |
 
 ---
 
@@ -78,3 +80,4 @@ Across all three international affective computing benchmarks (**DEAP**, **DREAM
 With the baseline, base, and oversampling matrix fully mapped across DEAP, DREAMER, and AMIGOS, the final methodological step for the publication is **Subject-Adversarial Domain Adaptation (Stage E)**:
 - By introducing a **Gradient Reversal Layer (GRL)** paired with a **Subject Identity Discriminator**, the CIB latent space is penalized whenever subject identity is decodable from the embeddings.
 - This forces the feature encoder to purge idiosyncratic anatomical signatures while retaining pure valence-discriminative cortical representations, directly bridging the inter-subject domain gap.
+

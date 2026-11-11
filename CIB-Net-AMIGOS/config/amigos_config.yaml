@@ -51,7 +51,7 @@ loso:
   save_per_fold: true
 
 imbalance:
-  method: "gamo"              # none | class_weight | logit_adj | smote | v_smote | deepsmote | gamo
+  method: "deepsmote"              # none | class_weight | logit_adj | smote | v_smote | deepsmote | gamo
   smote_k: 5
   oversample_in: "embedding"
   logit_adj_tau: 1.0
