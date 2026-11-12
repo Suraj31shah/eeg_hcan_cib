@@ -11,6 +11,7 @@ To understand the results, it is important to define the different pipelines tes
 *   **HCAN-CIB (Phase 1-3 Base):** Our proposed Hierarchical Cross-Attention Network. It integrates 14 EEG channels and 3 peripheral modalities (ECG, GSR - 18 extracted features), utilizing Spectral Decoupling (SD) and Stage B Regional Invariance Gates across 4 cortical lobes (Frontal, Temporal, Parietal, Occipital). In this base phase, no synthetic oversampling is applied (`imbalance: "none"`).
 *   **HCAN-CIB (V-SMOTE):** The full HCAN-CIB architecture with **Variational Latent SMOTE** enabled during training. This phase mathematically upsamples underrepresented affective states directly within the Conditional Information Bottleneck latent space ($Z$) to cure **Class Imbalance**.
 *   **HCAN-CIB (GAMO):** Generative Adversarial Minority Oversampling directly within the joint latent space (`channel_embeddings` and `x_periph`). It employs a lightweight generator MLP and discriminator MLP with residual feature perturbation to generate non-linear synthetic minority representations.
+*   **HCAN-CIB (DeepSMOTE):** Latent oversampling utilizing an autoencoder feature reconstruction framework to interpolate synthetic minority representations along learned nonlinear manifold geodesics.
 
 ---
 
@@ -24,6 +25,7 @@ To understand the results, it is important to define the different pipelines tes
 | **HCAN-CIB (Phase 1-3 Base)** | `0.5062 ± 0.1464` | `0.5040 ± 0.1378` | `0.5413 ± 0.1512` | `0.0825 ± 0.3023` | `0.5877 ± 0.1585` | `0.4213 ± 0.1527` | `0.0468 ± 0.2662` | `-0.0750 ± 0.2050` | `0.4148 ± 0.3889` | `0.2028 ± 0.1065` | `0.4219 ± 0.3614` |
 | **HCAN-CIB (V-SMOTE)** | `0.4828 ± 0.1369` | `0.4900 ± 0.1311` | `0.5190 ± 0.1498` | `0.0380 ± 0.2996` | `0.5695 ± 0.1366` | `0.4168 ± 0.1413` | `0.0023 ± 0.2320` | `-0.0984 ± 0.1941` | `0.5124 ± 0.3531` | `0.2183 ± 0.1103` | `0.5328 ± 0.3304` |
 | **HCAN-CIB (GAMO)** | `0.5031 ± 0.1333` | `0.5066 ± 0.1156` | `0.5074 ± 0.1376` | `0.0147 ± 0.2752` | `0.5752 ± 0.1367` | `0.4068 ± 0.1367` | `0.0460 ± 0.1919` | `-0.0781 ± 0.1980` | `0.4293 ± 0.4060` | `0.2031 ± 0.1206` | `0.4313 ± 0.3893` |
+| **HCAN-CIB (DeepSMOTE)** | `0.4859 ± 0.1214` | `0.4953 ± 0.0988` | `0.5309 ± 0.1447` | `0.0619 ± 0.2893` | `0.5902 ± 0.1360` | `0.3950 ± 0.1187` | `0.0231 ± 0.1626` | `-0.0953 ± 0.1901` | `0.4520 ± 0.3860` | `0.2230 ± 0.1165` | `0.4672 ± 0.3913` |
 
 *(Note: AUROC and Gini AUROC are computed across the 39 valid subjects where both classes exist; Subject 11 is an extreme single-class test subject where AUROC is mathematically undefined).*
 
@@ -33,12 +35,12 @@ To understand the results, it is important to define the different pipelines tes
 
 In HCAN-CIB, the Stage B gating module automatically learns to scale brain region representations based on cross-subject loss variance. The weights across all 40 subjects demonstrate strong neuroanatomical consistency:
 
-| Cortical Region | Channels (Emotiv Epoc 14) | Base Gate | V-SMOTE Gate | GAMO Gate | Diagnostic Interpretation |
-| :--- | :--- | :---: | :---: | :---: | :--- |
-| **Parietal** | `P7, P8` | `1.035 ± 0.195` | `1.183 ± 0.419` | **`1.278 ± 0.274`** | **Maximal Association:** Sensory integration is reinforced with generative minority sampling. |
-| **Occipital** | `O1, O2` | `1.227 ± 0.147` | **`1.309 ± 0.328`** | `1.206 ± 0.279` | **Heavily Prioritized:** Highest cross-subject stability. Directly processes visual film stimuli. |
-| **Frontal** | `AF3, F7, F3, FC5, FC6, F4, F8, AF4` | `1.151 ± 0.227` | `0.927 ± 0.275` | `1.106 ± 0.325` | **Active:** Sustained emotional engagement and valence asymmetry. |
-| **Temporal** | `T7, T8` | **`0.587 ± 0.199`** | **`0.581 ± 0.316`** | **`0.410 ± 0.199`** | **Extreme Suppression:** Deepest noise attenuation under adversarial training. |
+| Cortical Region | Channels (Emotiv Epoc 14) | Base Gate | V-SMOTE Gate | GAMO Gate | DeepSMOTE Gate | Diagnostic Interpretation |
+| :--- | :--- | :---: | :---: | :---: | :---: | :--- |
+| **Occipital** | `O1, O2` | `1.227 ± 0.147` | **`1.309 ± 0.328`** | `1.206 ± 0.279` | `1.193 ± 0.161` | **Heavily Prioritized:** Highest cross-subject stability. Directly processes visual film stimuli. |
+| **Parietal** | `P7, P8` | `1.035 ± 0.195` | `1.183 ± 0.419` | **`1.278 ± 0.274`** | `1.078 ± 0.160` | **Reinforced:** Multi-sensory association networks stabilize once latent classes are balanced. |
+| **Frontal** | `AF3, F7, F3, FC5, FC6, F4, F8, AF4` | `1.151 ± 0.227` | `0.927 ± 0.275` | `1.106 ± 0.325` | `1.053 ± 0.159` | **Active:** Sustained emotional engagement and valence asymmetry. |
+| **Temporal** | `T7, T8` | **`0.587 ± 0.199`** | **`0.581 ± 0.316`** | **`0.410 ± 0.199`** | **`0.676 ± 0.166`** | **Systematically Suppressed:** High inter-subject impedance variance and jaw/muscle artifacts consistently filtered out across all oversamplers. |
 
 ---
 
