@@ -38,7 +38,7 @@ class ACRNN(nn.Module):
             nn.Linear(64 * 2, n_classes)
         )
 
-    def forward(self, x):
+    def forward(self, x, return_feat=False):
         # x is [B, 64, T]
         B, C, T = x.size()
         
@@ -61,5 +61,7 @@ class ACRNN(nn.Module):
         rnn_out = torch.mean(rnn_out, dim=1) # [B, 128]
         
         out = self.classifier(rnn_out)
+        if return_feat:
+            return out, rnn_out
         return out
 

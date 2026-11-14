@@ -67,7 +67,9 @@ def main():
         "EEGNet (Baseline)",
         "CIB-Net (Phase 1-3)",
         "CIB-Net (V-SMOTE)",
-        "CIB-Net (GAMO)"
+        "CIB-Net (GAMO)",
+        "CIB-Net (Z-score)",
+        "CIB-Net (DeepSMOTE)"
     ]
     
     master_results = {}
@@ -78,9 +80,10 @@ def main():
         clean_name = model_key.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
         json_file = os.path.join(results_dir, f"fold_results_eegmmidb_{clean_name}.json")
         cm_file = os.path.join(results_dir, "plots", f"confusion_matrix_{clean_name}.png")
+        norm_mode = "zscore" if "Z-score" in m else "none"
         
-        # If already evaluated and plots exist, load from disk
-        if os.path.exists(json_file) and os.path.exists(cm_file):
+        # If already evaluated, load from disk
+        if os.path.exists(json_file):
             print(f"[BENCHMARK] Loading existing results for {m} from {json_file}")
             with open(json_file) as f:
                 saved = json.load(f)
@@ -93,7 +96,8 @@ def main():
                 epochs=epochs,
                 batch_size=64,
                 lr=0.0005,
-                device=device
+                device=device,
+                normalize=norm_mode
             )
             master_results[m] = res
             
@@ -101,7 +105,7 @@ def main():
         generate_grand_comparison_table(master_results, "EEGMMIDB_Comparative_Baselines_Report.md")
         
     print("\n" + "="*80)
-    print(" ALL 6 ARCHITECTURES COMPLETED SUCCESSFULLY!")
+    print(" ALL 8 ARCHITECTURES COMPLETED SUCCESSFULLY!")
     print("="*80)
     
     # Audio chime notification (alerts user when away from screen)

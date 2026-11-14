@@ -48,7 +48,7 @@ class EEGNet(nn.Module):
             nn.Linear(F2 * 16, n_classes)
         )
 
-    def forward(self, x):
+    def forward(self, x, return_feat=False):
         # x is [B, 64, T] -> reshape to [B, 1, 64, T]
         if x.dim() == 3:
             x = x.unsqueeze(1)
@@ -58,7 +58,9 @@ class EEGNet(nn.Module):
         x = self.block3(x)
         x = self.adaptive_pool(x)
         
-        x = x.view(x.size(0), -1)
-        out = self.classifier(x)
+        feat = x.view(x.size(0), -1)
+        out = self.classifier(feat)
+        if return_feat:
+            return out, feat
         return out
 

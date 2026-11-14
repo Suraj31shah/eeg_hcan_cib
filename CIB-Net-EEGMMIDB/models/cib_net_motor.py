@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from models.stage_a_encoder import PerChannelCNNEncoder
 from models.stage_c_fusion import RegionGroupedFusion
+from training.imbalance import DeepSMOTELatent
 
 class CIBNetMotor(nn.Module):
     """
@@ -21,8 +22,9 @@ class CIBNetMotor(nn.Module):
         
         self.encoder = PerChannelCNNEncoder(n_channels=n_channels, d_embed=d_embed, shared_weights=shared_weights)
         self.fusion = RegionGroupedFusion(d_embed=d_embed, n_classes=n_classes, region_dropout_p=region_dropout_p, regions_dict=regions_dict)
+        self.deepsmote = DeepSMOTELatent(channels=n_channels, d_embed=d_embed, hidden_dim=128, latent_dim=64)
         
-    def forward(self, x, y=None, subj_ids=None, smote_k=0, imbalance_method="none"):
+    def forward(self, x, y=None, subj_ids=None, smote_k=5, imbalance_method="none"):
         """
         x: [B, 64, T]
         returns:
@@ -32,18 +34,25 @@ class CIBNetMotor(nn.Module):
             channel_embeddings: [B, 64, d_embed]
             y: augmented labels (if SMOTE/GAMO applied)
             subj_ids: augmented subjects (if SMOTE/GAMO applied)
+            bottleneck: [B, d_embed]
+            aux_loss: scalar tensor (reconstruction loss for DeepSMOTE)
         """
         channel_embeddings = self.encoder(x) # [B, 64, d_embed]
+        aux_loss = torch.tensor(0.0, device=x.device)
         
         # Latent space oversampling if requested
-        if self.training and imbalance_method in ["v_smote", "smote", "gamo"] and y is not None:
+        if self.training and imbalance_method in ["v_smote", "smote", "gamo", "deepsmote"] and y is not None:
             if imbalance_method == "v_smote":
                 from training.smote import apply_v_smote_latent
                 channel_embeddings, y, subj_ids = apply_v_smote_latent(channel_embeddings, y, subj_ids, k_neighbors=smote_k)
             elif imbalance_method == "gamo":
                 from training.imbalance import apply_gamo_latent
                 channel_embeddings, y, subj_ids = apply_gamo_latent(channel_embeddings, y, subj_ids)
+            elif imbalance_method == "deepsmote":
+                channel_embeddings, y, subj_ids, aux_loss = self.deepsmote.oversample(
+                    channel_embeddings, y, subj_ids, k_neighbors=smote_k
+                )
                 
-        final_logits, group_logits, group_feats = self.fusion(channel_embeddings)
-        return final_logits, group_logits, group_feats, channel_embeddings, y, subj_ids
+        final_logits, group_logits, group_feats, bottleneck = self.fusion(channel_embeddings)
+        return final_logits, group_logits, group_feats, channel_embeddings, y, subj_ids, bottleneck, aux_loss
 

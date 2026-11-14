@@ -33,10 +33,12 @@ class PlainCNN(nn.Module):
             nn.Linear(64, n_classes)
         )
 
-    def forward(self, x):
+    def forward(self, x, return_feat=False):
         # x is [B, 64, T]
         feat = self.features(x)
         feat = feat.view(feat.size(0), -1)
         out = self.classifier(feat)
+        if return_feat:
+            return out, feat
         return out
 

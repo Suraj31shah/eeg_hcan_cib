@@ -99,7 +99,8 @@ class RegionGroupedFusion(nn.Module):
         transformed_tokens = self.transformer(region_tokens) # [B, 5, d_embed]
         
         flat = transformed_tokens.reshape(B, -1) # [B, 5 * d_embed]
-        final_logits = self.classifier(flat) # [B, n_classes]
+        bottleneck = self.classifier[:2](flat) # [B, d_embed]
+        final_logits = self.classifier[2:](bottleneck) # [B, n_classes]
         
-        return final_logits, group_logits, group_feats
+        return final_logits, group_logits, group_feats, bottleneck
 
